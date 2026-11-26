@@ -240,7 +240,7 @@ export function OnboardingForm({
               }}
               placeholder="Ex.: Mariana Souza Almeida"
               aria-invalid={Boolean(fieldErrors.fullName)}
-              className={`vizo-input pl-10 ${fieldErrors.fullName ? "vizo-input-error" : ""}`}
+              className={`vizo-input pl-11 ${fieldErrors.fullName ? "vizo-input-error" : ""}`}
               disabled={saving}
             />
           </div>
@@ -277,7 +277,7 @@ export function OnboardingForm({
                 }}
                 placeholder="000.000.000-00"
                 aria-invalid={Boolean(fieldErrors.cpf)}
-                className={`vizo-input pl-10 font-mono text-[14px] ${fieldErrors.cpf ? "vizo-input-error" : ""}`}
+                className={`vizo-input pl-11 font-mono text-[14px] ${fieldErrors.cpf ? "vizo-input-error" : ""}`}
                 disabled={saving}
               />
             </div>
@@ -312,7 +312,7 @@ export function OnboardingForm({
                 }}
                 placeholder="(11) 99999-9999"
                 aria-invalid={Boolean(fieldErrors.phone)}
-                className={`vizo-input pl-10 font-mono text-[14px] ${fieldErrors.phone ? "vizo-input-error" : ""}`}
+                className={`vizo-input pl-11 font-mono text-[14px] ${fieldErrors.phone ? "vizo-input-error" : ""}`}
                 disabled={saving}
               />
             </div>
@@ -352,7 +352,7 @@ export function OnboardingForm({
                   }}
                   placeholder='Ex.: Bloco A, Torre 1 ou "Casa"'
                   aria-invalid={Boolean(fieldErrors.block)}
-                  className={`vizo-input pl-10 ${fieldErrors.block ? "vizo-input-error" : ""}`}
+                  className={`vizo-input pl-11 ${fieldErrors.block ? "vizo-input-error" : ""}`}
                   disabled={saving}
                 />
               </div>
@@ -409,7 +409,7 @@ export function OnboardingForm({
                   }}
                   placeholder="Ex.: 304, 12B ou 08"
                   aria-invalid={Boolean(fieldErrors.unit)}
-                  className={`vizo-input pl-10 ${fieldErrors.unit ? "vizo-input-error" : ""}`}
+                  className={`vizo-input pl-11 ${fieldErrors.unit ? "vizo-input-error" : ""}`}
                   disabled={saving}
                 />
               </div>

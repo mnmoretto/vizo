@@ -221,14 +221,14 @@ export function SindicoDashboard({
               Buscar por Protocolo
             </label>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 id="sindico-search-protocol"
                 type="search"
                 value={protocolQuery}
                 onChange={(e) => setProtocolQuery(e.target.value)}
                 placeholder="Ex.: VIZ-2026-8492"
-                className="vizo-input pl-9 pr-8 py-2.5 text-sm font-mono"
+                className="vizo-input pl-10 pr-9 py-2.5 text-sm font-mono"
               />
               {protocolQuery && (
                 <button

@@ -337,7 +337,7 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="nome@exemplo.com"
-              className="vizo-input pl-10"
+              className="vizo-input pl-11"
               disabled={isBusy}
             />
           </div>
@@ -366,7 +366,7 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
               placeholder={
                 mode === "login" ? "Sua senha" : "Mínimo de 6 caracteres"
               }
-              className="vizo-input pl-10 pr-11"
+              className="vizo-input pl-11 pr-11"
               disabled={isBusy}
             />
             <button
@@ -404,7 +404,7 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repita sua senha"
-                className="vizo-input pl-10"
+                className="vizo-input pl-11"
                 disabled={isBusy}
               />
             </div>

@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+:root {
+  --vizo-canvas: #f6f7f5;
+  --vizo-surface: #ffffff;
+  --vizo-surface-subtle: #f1f4f2;
+  --vizo-ink: #0f172a;
+  --vizo-ink-muted: #526071;
+  --vizo-border: rgba(15, 23, 42, 0.09);
+  --vizo-brand: #0f766e;
+  --vizo-brand-hover: #0d5d56;
+  --vizo-brand-soft: #edf8f6;
+  --vizo-danger: #be123c;
+  --vizo-danger-soft: #fff1f2;
+}
+
+@theme inline {
+  --color-background: var(--vizo-canvas);
+  --color-foreground: var(--vizo-ink);
+  --color-brand: var(--vizo-brand);
+  --color-brand-hover: var(--vizo-brand-hover);
+  --color-brand-soft: var(--vizo-brand-soft);
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  background-color: var(--vizo-canvas);
+  color: var(--vizo-ink);
+}
+
+body {
+  background-color: var(--vizo-canvas);
+  color: var(--vizo-ink);
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+}
+
+/* Utilitários de superfície e interação Vizo */
+.vizo-card {
+  background-color: var(--vizo-surface);
+  border: 1px solid var(--vizo-border);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px -12px rgba(15, 23, 42, 0.08);
+}
+
+.vizo-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background-color: #ffffff;
+  padding: 0.75rem 0.95rem;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--vizo-ink);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.vizo-input::placeholder {
+  color: #94a3b8;
+}
+
+.vizo-input:focus {
+  outline: none;
+  border-color: var(--vizo-brand);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+}
+
+.vizo-input-error {
+  border-color: rgba(190, 18, 60, 0.55);
+  background-color: #fffafb;
+}
+
+.vizo-input-error:focus {
+  border-color: var(--vizo-danger);
+  box-shadow: 0 0 0 3px rgba(190, 18, 60, 0.12);
+}
+
+.vizo-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  background-color: var(--vizo-brand);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  padding: 0.8rem 1.25rem;
+  transition:
+    background-color 160ms ease,
+    transform 120ms ease,
+    box-shadow 160ms ease;
+  box-shadow: 0 1px 2px rgba(15, 118, 110, 0.25);
+  cursor: pointer;
+}
+
+.vizo-btn-primary:hover:not(:disabled) {
+  background-color: var(--vizo-brand-hover);
+}
+
+.vizo-btn-primary:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.vizo-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.vizo-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  border-radius: 0.75rem;
+  background-color: #ffffff;
+  color: var(--vizo-ink);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  padding: 0.78rem 1.25rem;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 120ms ease;
+  cursor: pointer;
+}
+
+.vizo-btn-secondary:hover:not(:disabled) {
+  background-color: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.22);
+}
+
+.vizo-btn-secondary:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.vizo-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes vizoFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-vizo-fade {
+  animation: vizoFadeUp 260ms ease-out both;
+}

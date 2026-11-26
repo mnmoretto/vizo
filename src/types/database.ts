@@ -49,6 +49,15 @@ export interface Occurrence {
   updated_at: string;
 }
 
+export interface ResidentSummary {
+  id: string;
+  full_name: string | null;
+  block: string | null;
+  unit: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
 export interface OccurrencePhoto {
   id: string;
   occurrence_id: string;
@@ -65,6 +74,7 @@ export interface OccurrenceUpdate {
   occurrence_id: string;
   user_id: string;
   comment: string | null;
+  status_change?: OccurrenceStatus | null;
   created_at: string;
   author_name?: string | null;
   author_role?: UserRole;
@@ -75,9 +85,11 @@ export interface OccurrenceListItem extends Occurrence {
   thumbnailUrl: string | null;
   photosCount: number;
   updatesCount: number;
+  resident?: ResidentSummary | null;
 }
 
 export interface OccurrenceDetailData extends Occurrence {
+  resident?: ResidentSummary | null;
   initialPhotos: OccurrencePhoto[];
   updates: OccurrenceUpdate[];
 }

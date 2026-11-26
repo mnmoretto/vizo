@@ -2,8 +2,12 @@ import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { OccurrencesHome } from "@/components/occurrences/OccurrencesHome";
+import { SindicoDashboard } from "@/components/occurrences/SindicoDashboard";
 import { getCurrentSessionProfile } from "@/lib/auth";
-import { listResidentOccurrences } from "@/lib/occurrences-server";
+import {
+  listAllCondoOccurrences,
+  listResidentOccurrences,
+} from "@/lib/occurrences-server";
 
 export const metadata: Metadata = {
   title: "Ocorrências",
@@ -16,6 +20,17 @@ async function HomeContent() {
 
   if (!session.isAuthenticated || !session.profile || !session.userId) {
     redirect("/login");
+  }
+
+  if (session.profile.role === "sindico") {
+    const { items, schemaMissing } = await listAllCondoOccurrences();
+    return (
+      <SindicoDashboard
+        profile={session.profile}
+        occurrences={items}
+        schemaMissing={schemaMissing}
+      />
+    );
   }
 
   const { items, schemaMissing } = await listResidentOccurrences(
@@ -36,7 +51,7 @@ export default function HomePage() {
     <Suspense
       fallback={
         <div className="space-y-4 animate-pulse">
-          <div className="h-8 w-44 rounded-lg bg-slate-200/70" />
+          <div className="h-8 w-52 rounded-lg bg-slate-200/70" />
           <div className="h-32 rounded-2xl bg-white border border-slate-200/70" />
           <div className="h-32 rounded-2xl bg-white border border-slate-200/70" />
         </div>

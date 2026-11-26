@@ -22,26 +22,27 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-const NAV_ITEMS = [
-  {
-    href: "/",
-    label: "Ocorrências",
-    icon: ClipboardList,
-  },
-  {
-    href: "/perfil",
-    label: "Perfil",
-    icon: UserCircle2,
-  },
-];
-
 export function AppShell({ profile, isDemo, children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
+  const isSindico = profile.role === "sindico";
   const unitLabel = [profile.block, profile.unit].filter(Boolean).join(" · ");
-  const roleLabel = profile.role === "sindico" ? "Síndico" : "Morador";
+  const roleLabel = isSindico ? "Síndico" : "Morador";
+
+  const navItems = [
+    {
+      href: "/",
+      label: isSindico ? "Painel Geral" : "Ocorrências",
+      icon: ClipboardList,
+    },
+    {
+      href: "/perfil",
+      label: "Perfil",
+      icon: UserCircle2,
+    },
+  ];
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -60,7 +61,7 @@ export function AppShell({ profile, isDemo, children }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background overflow-x-clip">
       {/* Faixa discreta se estiver em modo demonstração */}
       {isDemo && (
         <div className="bg-teal-900 text-teal-50 text-xs py-1.5 px-4 text-center">
@@ -74,11 +75,11 @@ export function AppShell({ profile, isDemo, children }: AppShellProps) {
 
       {/* Top Bar Responsiva */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between gap-4 px-4 sm:px-6">
-          <div className="flex items-center gap-6">
+        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex items-center gap-6 min-w-0">
             <Link
               href="/"
-              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 rounded-lg"
+              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 rounded-lg shrink-0"
             >
               <VizoLogo size="sm" />
             </Link>
@@ -88,7 +89,7 @@ export function AppShell({ profile, isDemo, children }: AppShellProps) {
               aria-label="Navegação principal"
               className="hidden md:flex items-center gap-1"
             >
-              {NAV_ITEMS.map((item) => {
+              {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive =
                   item.href === "/"
@@ -113,22 +114,22 @@ export function AppShell({ profile, isDemo, children }: AppShellProps) {
           </div>
 
           {/* Identificação da Unidade + Sair */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 shrink-0">
             {unitLabel && (
-              <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-                <Building2 className="h-3.5 w-3.5 text-teal-700" />
-                <span>{unitLabel}</span>
+              <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 max-w-[180px]">
+                <Building2 className="h-3.5 w-3.5 text-teal-700 shrink-0" />
+                <span className="truncate">{unitLabel}</span>
               </div>
             )}
 
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                profile.role === "sindico"
+                isSindico
                   ? "bg-amber-50 text-amber-800 border border-amber-200/80"
                   : "bg-teal-50 text-teal-800 border border-teal-200/70"
               }`}
             >
-              {profile.role === "sindico" && <Shield className="h-3 w-3" />}
+              {isSindico && <Shield className="h-3 w-3" />}
               {roleLabel}
             </span>
 
@@ -153,17 +154,17 @@ export function AppShell({ profile, isDemo, children }: AppShellProps) {
       </header>
 
       {/* Área de Conteúdo Principal */}
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pt-6 pb-24 sm:px-6 md:pb-12">
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:pb-12">
         {children}
       </main>
 
       {/* Bottom Navigation Mobile-First */}
       <nav
         aria-label="Navegação inferior"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/90 bg-white/95 backdrop-blur-md md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/90 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
       >
         <div className="mx-auto grid max-w-md grid-cols-2 px-4 py-2">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               item.href === "/"

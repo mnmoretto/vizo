@@ -24,6 +24,12 @@ Web app mobile-first responsivo para registro e acompanhamento de **ocorrências
 - **Detalhes com Linha do Tempo** (`/ocorrencias/[id]`): visualização ampliada (lightbox) das fotos com carimbo, histórico cronológico e adição de novas atualizações (comentários e/ou fotos) enquanto estiver `Aberto` — bloqueado automaticamente quando `Resolvido` ou `Cancelado`
 - Migration SQL da Etapa 2 em [`supabase/stage2_occurrences.sql`](./supabase/stage2_occurrences.sql)
 
+### Etapa 3 — Módulo Administrativo do Síndico
+- **Painel Geral do Condomínio** (`/` quando `role = 'sindico'`): listagem de todas as ocorrências de todos os moradores exibindo Protocolo, Nome do morador, Bloco/Apartamento, Cômodo, Data/Hora, Status e miniatura
+- **Filtros administrativos**: busca por código de protocolo, filtro por Bloco/Torre, filtro por Apartamento/Casa e filtros de Status (`Todos`, `Aberto`, `Resolvido`, `Cancelado`)
+- **Ações na tela de detalhes**: identificação completa do morador com atalho de WhatsApp, comentários/fotos intermediários do síndico e **modal de encerramento** (`Resolvido` ou `Cancelado`) exigindo parecer final obrigatório registrado na timeline
+- Migration SQL da Etapa 3 em [`supabase/stage3_sindico.sql`](./supabase/stage3_sindico.sql)
+
 ## Como rodar localmente
 
 1. Instale as dependências:
@@ -41,8 +47,8 @@ cp .env.example .env.local
 Preencha `.env.local` com `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` do seu projeto Supabase.
 
 3. No painel do Supabase:
-   - Abra **SQL Editor** e execute primeiro `supabase/schema.sql` (Etapa 1) e depois `supabase/stage2_occurrences.sql` (Etapa 2).
-   - Em **Authentication → URL Configuration**, adicione `http://localhost:3000/auth/callback` em *Redirect URLs*.
+   - Abra **SQL Editor** e execute em ordem: `supabase/schema.sql`, `supabase/stage2_occurrences.sql` e `supabase/stage3_sindico.sql`.
+   - Em **Authentication → URL Configuration**, adicione `http://localhost:3000/auth/callback` (e a URL da Vercel em produção) em *Redirect URLs*.
    - Em **Authentication → Providers → Google**, habilite o provedor Google (Client ID e Client Secret do Google Cloud Console).
 
 4. Inicie o servidor de desenvolvimento:

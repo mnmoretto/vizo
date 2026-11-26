@@ -63,6 +63,7 @@ async function OccurrenceDetailContent({
     <OccurrenceDetail
       occurrence={occurrence}
       currentUserId={session.userId}
+      currentUserRole={session.profile.role}
       justCreated={resolvedSearch.criado === "1"}
     />
   );

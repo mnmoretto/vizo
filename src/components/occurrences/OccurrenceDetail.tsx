@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
+  Building2,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -16,10 +17,13 @@ import {
   Loader2,
   Lock,
   MessageSquarePlus,
+  Phone,
   Send,
   Shield,
+  ShieldCheck,
   User,
   X,
+  XCircle,
   ZoomIn,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -32,33 +36,45 @@ import {
   formatDateTimeBR,
   formatPhotoStampBR,
 } from "@/lib/occurrences";
+import { formatPhone, onlyDigits } from "@/lib/validators";
 import {
   PhotoPicker,
   type PendingPhoto,
 } from "@/components/occurrences/PhotoPicker";
-import type { OccurrenceDetailData, OccurrencePhoto } from "@/types/database";
+import type {
+  OccurrenceDetailData,
+  OccurrencePhoto,
+  UserRole,
+} from "@/types/database";
 
 interface OccurrenceDetailProps {
   occurrence: OccurrenceDetailData;
   currentUserId: string;
+  currentUserRole: UserRole;
   justCreated?: boolean;
 }
+
+type ClosingStatus = "resolvido" | "cancelado";
+
+const MIN_CLOSING_COMMENT_LENGTH = 10;
 
 export function OccurrenceDetail({
   occurrence,
   currentUserId,
+  currentUserRole,
   justCreated = false,
 }: OccurrenceDetailProps) {
   const router = useRouter();
   const statusMeta = STATUS_META[occurrence.status];
   const isOpen = occurrence.status === "aberto";
+  const isSindico = currentUserRole === "sindico";
 
   const [copiedProtocol, setCopiedProtocol] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<OccurrencePhoto | null>(
     null,
   );
 
-  // Estado do formulário de atualização da timeline
+  // Estado do formulário de atualização intermediária
   const [comment, setComment] = useState("");
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [photosError, setPhotosError] = useState<string | null>(null);
@@ -66,6 +82,14 @@ export function OccurrenceDetail({
   const [updateSuccess, setUpdateSuccess] = useState(false);
   const [submittingUpdate, setSubmittingUpdate] = useState(false);
   const [uploadStep, setUploadStep] = useState<string | null>(null);
+
+  // Estado do modal de encerramento pelo síndico
+  const [closingTarget, setClosingTarget] = useState<ClosingStatus | null>(
+    null,
+  );
+  const [closingComment, setClosingComment] = useState("");
+  const [closingError, setClosingError] = useState<string | null>(null);
+  const [closingLoading, setClosingLoading] = useState(false);
 
   const pendingPhotosRef = useRef<PendingPhoto[]>([]);
 
@@ -80,6 +104,21 @@ export function OccurrenceDetail({
       }
     };
   }, []);
+
+  // Fecha lightbox ou modal de encerramento com a tecla Escape
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (lightboxPhoto) {
+        setLightboxPhoto(null);
+      } else if (closingTarget && !closingLoading) {
+        setClosingTarget(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxPhoto, closingTarget, closingLoading]);
 
   async function handleCopyProtocol() {
     try {
@@ -217,7 +256,6 @@ export function OccurrenceDetail({
         }
       }
 
-      // Limpa o formulário e recarrega os dados do servidor
       for (const p of pendingPhotos) {
         URL.revokeObjectURL(p.previewUrl);
       }
@@ -236,6 +274,101 @@ export function OccurrenceDetail({
     }
   }
 
+  function openClosingModal(status: ClosingStatus) {
+    setClosingTarget(status);
+    setClosingComment("");
+    setClosingError(null);
+  }
+
+  async function handleConfirmClose(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!closingTarget || !isSindico || !isOpen) return;
+
+    const trimmed = closingComment.trim();
+    if (trimmed.length < MIN_CLOSING_COMMENT_LENGTH) {
+      setClosingError(
+        `Informe um parecer de encerramento com pelo menos ${MIN_CLOSING_COMMENT_LENGTH} caracteres.`,
+      );
+      return;
+    }
+
+    setClosingError(null);
+    setClosingLoading(true);
+
+    try {
+      const supabase = createClient();
+
+      // Tenta primeiro a função atômica da Etapa 3 (close_occurrence)
+      const { error: rpcError } = await supabase.rpc("close_occurrence", {
+        p_occurrence_id: occurrence.id,
+        p_new_status: closingTarget,
+        p_comment: trimmed,
+      });
+
+      if (rpcError) {
+        // Fallback gracioso caso o SQL da Etapa 3 ainda não tenha sido rodado
+        const isMissingRpc =
+          rpcError.code === "42883" ||
+          rpcError.code === "PGRST202" ||
+          rpcError.message.toLowerCase().includes("close_occurrence");
+
+        if (!isMissingRpc) {
+          setClosingError(rpcError.message);
+          return;
+        }
+
+        const prefix =
+          closingTarget === "resolvido"
+            ? "[Encerrado como Resolvido] "
+            : "[Encerrado como Cancelado] ";
+
+        const { error: fallbackUpdateErr } = await supabase
+          .from("occurrence_updates")
+          .insert({
+            occurrence_id: occurrence.id,
+            user_id: currentUserId,
+            comment: `${prefix}${trimmed}`,
+          });
+
+        if (fallbackUpdateErr) {
+          setClosingError(fallbackUpdateErr.message);
+          return;
+        }
+
+        const { error: fallbackStatusErr } = await supabase
+          .from("occurrences")
+          .update({ status: closingTarget })
+          .eq("id", occurrence.id);
+
+        if (fallbackStatusErr) {
+          setClosingError(fallbackStatusErr.message);
+          return;
+        }
+      }
+
+      setClosingTarget(null);
+      setClosingComment("");
+      router.refresh();
+    } catch (err) {
+      console.error("[Vizo] Erro ao encerrar ocorrência:", err);
+      const detail =
+        err instanceof Error && err.message ? ` (${err.message})` : "";
+      setClosingError(`Não foi possível encerrar o chamado${detail}.`);
+    } finally {
+      setClosingLoading(false);
+    }
+  }
+
+  const residentUnitText = [
+    occurrence.resident?.block,
+    occurrence.resident?.unit,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const residentWhatsAppDigits = occurrence.resident?.phone
+    ? onlyDigits(occurrence.resident.phone)
+    : "";
+
   return (
     <div className="space-y-6 animate-vizo-fade">
       {/* Barra superior de navegação */}
@@ -245,7 +378,9 @@ export function OccurrenceDetail({
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span>Minhas ocorrências</span>
+          <span>
+            {isSindico ? "Painel do condomínio" : "Minhas ocorrências"}
+          </span>
         </Link>
 
         <span
@@ -268,17 +403,61 @@ export function OccurrenceDetail({
             <p className="text-xs text-emerald-900 mt-0.5">
               Protocolo{" "}
               <strong className="font-mono">{occurrence.protocol}</strong>{" "}
-              gerado em {formatDateTimeBR(occurrence.created_at, { withSeconds: true })}.
+              gerado em{" "}
+              {formatDateTimeBR(occurrence.created_at, { withSeconds: true })}.
             </p>
           </div>
         </div>
       )}
 
+      {/* Ações de Encerramento exclusivas do Síndico (enquanto aberta) */}
+      {isSindico && isOpen && (
+        <section
+          aria-label="Ações administrativas do síndico"
+          className="rounded-2xl border border-amber-200/90 bg-amber-50/60 p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-2.5">
+            <Shield className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-slate-900">
+                Encerramento de chamado
+              </p>
+              <p className="text-xs text-slate-600">
+                Ao finalizar, será obrigatório registrar o parecer oficial do
+                síndico no histórico.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+            <button
+              id="btn-close-resolved"
+              type="button"
+              onClick={() => openClosingModal("resolvido")}
+              className="vizo-btn-primary text-sm py-2.5 px-4"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Marcar como Resolvido</span>
+            </button>
+
+            <button
+              id="btn-close-canceled"
+              type="button"
+              onClick={() => openClosingModal("cancelado")}
+              className="vizo-btn-secondary text-sm py-2.5 px-4 text-rose-700 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+            >
+              <XCircle className="h-4 w-4" />
+              <span>Cancelar chamado</span>
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* Card principal — Dados iniciais do registro */}
       <section className="vizo-card rounded-2xl p-5 sm:p-7 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-slate-100">
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm font-bold tracking-tight text-teal-900 bg-teal-50 border border-teal-200/80 px-2.5 py-1 rounded-lg">
                 {occurrence.protocol}
               </span>
@@ -286,7 +465,7 @@ export function OccurrenceDetail({
                 type="button"
                 onClick={handleCopyProtocol}
                 aria-label="Copiar protocolo"
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
               >
                 {copiedProtocol ? (
                   <>
@@ -304,7 +483,7 @@ export function OccurrenceDetail({
 
             <h1 className="mt-3 flex items-center gap-2 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
               <DoorClosed className="h-5 w-5 text-teal-700 shrink-0" />
-              <span>{occurrence.room}</span>
+              <span className="break-words">{occurrence.room}</span>
             </h1>
           </div>
 
@@ -321,12 +500,44 @@ export function OccurrenceDetail({
           </div>
         </div>
 
+        {/* Faixa de identificação do morador (visível para o síndico) */}
+        {isSindico && occurrence.resident && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-xs sm:text-sm">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900">
+                <User className="h-4 w-4 text-slate-400 shrink-0" />
+                <span>{occurrence.resident.full_name || "Morador"}</span>
+              </span>
+              {residentUnitText && (
+                <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
+                  <Building2 className="h-4 w-4 text-teal-700 shrink-0" />
+                  <span>{residentUnitText}</span>
+                </span>
+              )}
+            </div>
+
+            {residentWhatsAppDigits && (
+              <a
+                href={`https://wa.me/55${residentWhatsAppDigits}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 transition-colors"
+              >
+                <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="font-mono">
+                  {formatPhone(residentWhatsAppDigits)}
+                </span>
+              </a>
+            )}
+          </div>
+        )}
+
         {/* Descrição completa */}
         <div className="space-y-1.5">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
             Relato inicial
           </h2>
-          <p className="whitespace-pre-wrap text-sm sm:text-[15px] leading-relaxed text-slate-700">
+          <p className="whitespace-pre-wrap break-words text-sm sm:text-[15px] leading-relaxed text-slate-700">
             {occurrence.description}
           </p>
         </div>
@@ -415,17 +626,51 @@ export function OccurrenceDetail({
           {/* Atualizações subsequentes em ordem cronológica */}
           {occurrence.updates.map((upd) => {
             const isSindicoAuthor = upd.author_role === "sindico";
+            const closingStatus = upd.status_change;
+            const isClosingEntry =
+              closingStatus === "resolvido" || closingStatus === "cancelado";
+
             return (
               <li key={upd.id} className="relative">
                 <span
                   className={`absolute -left-6 top-1.5 flex h-5 w-5 items-center justify-center rounded-full ring-4 ring-background ${
-                    isSindicoAuthor ? "bg-amber-600" : "bg-slate-700"
+                    closingStatus === "resolvido"
+                      ? "bg-emerald-600"
+                      : closingStatus === "cancelado"
+                        ? "bg-slate-500"
+                        : isSindicoAuthor
+                          ? "bg-amber-600"
+                          : "bg-slate-700"
                   }`}
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-white" />
                 </span>
 
-                <div className="vizo-card rounded-xl p-4 space-y-3">
+                <div
+                  className={`rounded-xl p-4 space-y-3 ${
+                    isClosingEntry
+                      ? closingStatus === "resolvido"
+                        ? "border border-emerald-200 bg-emerald-50/50 shadow-xs"
+                        : "border border-slate-300 bg-slate-100/70 shadow-xs"
+                      : "vizo-card"
+                  }`}
+                >
+                  {isClosingEntry && (
+                    <div
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${
+                        closingStatus === "resolvido"
+                          ? "bg-emerald-100 text-emerald-900"
+                          : "bg-slate-200 text-slate-800"
+                      }`}
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      <span>
+                        Parecer final · Encerrado como{" "}
+                        {STATUS_META[closingStatus].label}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span
@@ -455,7 +700,7 @@ export function OccurrenceDetail({
                   </div>
 
                   {upd.comment && (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800">
                       {upd.comment}
                     </p>
                   )}
@@ -511,12 +756,15 @@ export function OccurrenceDetail({
             <div className="flex items-center gap-2">
               <MessageSquarePlus className="h-5 w-5 text-teal-700" />
               <h2 className="text-base font-bold text-slate-900">
-                Adicionar atualização
+                {isSindico
+                  ? "Adicionar comentário do síndico"
+                  : "Adicionar atualização"}
               </h2>
             </div>
             <p className="text-xs text-slate-500">
-              Enquanto a ocorrência estiver <strong>Aberta</strong>, você pode
-              incluir novos comentários e/ou novas fotos no histórico.
+              {isSindico
+                ? "Registre andamentos intermediários, agendamentos de vistoria ou fotos para o morador acompanhar na linha do tempo."
+                : "Enquanto a ocorrência estiver Aberta, você pode incluir novos comentários e/ou novas fotos no histórico."}
             </p>
 
             {updateError && (
@@ -540,10 +788,7 @@ export function OccurrenceDetail({
             )}
 
             <div>
-              <label
-                htmlFor="timeline-comment"
-                className="sr-only"
-              >
+              <label htmlFor="timeline-comment" className="sr-only">
                 Novo comentário
               </label>
               <textarea
@@ -556,7 +801,11 @@ export function OccurrenceDetail({
                   if (updateSuccess) setUpdateSuccess(false);
                 }}
                 disabled={submittingUpdate}
-                placeholder="Escreva uma atualização ou observação complementar (opcional se enviar fotos)..."
+                placeholder={
+                  isSindico
+                    ? "Ex.: Vistoria agendada com a equipe de manutenção para amanhã às 10h..."
+                    : "Escreva uma atualização ou observação complementar (opcional se enviar fotos)..."
+                }
                 className="vizo-input resize-y min-h-[92px]"
               />
             </div>
@@ -602,12 +851,167 @@ export function OccurrenceDetail({
               <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
                 Novos comentários e fotos ficam bloqueados quando o status está
                 como <strong>Resolvido</strong> ou <strong>Cancelado</strong>.
-                Caso o problema volte a ocorrer, abra um novo registro.
               </p>
             </div>
           </div>
         )}
       </section>
+
+      {/* Modal obrigatório de parecer de encerramento (Síndico) */}
+      {closingTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="close-modal-title"
+          onClick={() => {
+            if (!closingLoading) setClosingTarget(null);
+          }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 p-0 sm:p-4 backdrop-blur-xs"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 sm:p-6 shadow-2xl space-y-4 animate-vizo-fade"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    closingTarget === "resolvido"
+                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      : "bg-rose-50 text-rose-800 border border-rose-200"
+                  }`}
+                >
+                  {closingTarget === "resolvido" ? (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5" />
+                  )}
+                  {closingTarget === "resolvido"
+                    ? "Encerrar como Resolvido"
+                    : "Encerrar como Cancelado"}
+                </span>
+                <h2
+                  id="close-modal-title"
+                  className="mt-2 text-lg font-bold text-slate-900"
+                >
+                  Parecer final do síndico
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Protocolo{" "}
+                  <strong className="font-mono text-slate-700">
+                    {occurrence.protocol}
+                  </strong>{" "}
+                  — Este parecer será registrado no histórico com data e hora e
+                  bloqueará novas edições.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!closingLoading) setClosingTarget(null);
+                }}
+                aria-label="Fechar modal"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {closingError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800"
+              >
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                <span>{closingError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmClose} className="space-y-4" noValidate>
+              <div>
+                <label
+                  htmlFor="closing-opinion-input"
+                  className="block text-sm font-medium text-slate-700 mb-1.5"
+                >
+                  Comentário de encerramento / parecer{" "}
+                  <span className="text-rose-600">*</span>
+                </label>
+                <textarea
+                  id="closing-opinion-input"
+                  rows={4}
+                  required
+                  autoFocus
+                  value={closingComment}
+                  onChange={(e) => {
+                    setClosingComment(e.target.value);
+                    if (closingError) setClosingError(null);
+                  }}
+                  disabled={closingLoading}
+                  placeholder={
+                    closingTarget === "resolvido"
+                      ? "Descreva a solução aplicada, reparo realizado ou conclusão da vistoria..."
+                      : "Explique o motivo do cancelamento deste chamado..."
+                  }
+                  className={`vizo-input resize-y min-h-[110px] ${
+                    closingError ? "vizo-input-error" : ""
+                  }`}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Mínimo de {MIN_CLOSING_COMMENT_LENGTH} caracteres (
+                  {closingComment.trim().length}/{MIN_CLOSING_COMMENT_LENGTH}).
+                </p>
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setClosingTarget(null)}
+                  disabled={closingLoading}
+                  className="vizo-btn-secondary w-full sm:w-auto text-sm"
+                >
+                  Voltar
+                </button>
+
+                <button
+                  id="btn-confirm-close-occurrence"
+                  type="submit"
+                  disabled={
+                    closingLoading ||
+                    closingComment.trim().length < MIN_CLOSING_COMMENT_LENGTH
+                  }
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto ${
+                    closingTarget === "resolvido"
+                      ? "bg-teal-700 hover:bg-teal-800"
+                      : "bg-rose-700 hover:bg-rose-800"
+                  }`}
+                >
+                  {closingLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Confirmando...</span>
+                    </>
+                  ) : (
+                    <>
+                      {closingTarget === "resolvido" ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <XCircle className="h-4 w-4" />
+                      )}
+                      <span>
+                        Confirmar{" "}
+                        {closingTarget === "resolvido"
+                          ? "Resolvido"
+                          : "Cancelamento"}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Lightbox para ampliar fotos com carimbo de data/hora */}
       {lightboxPhoto && lightboxPhoto.signedUrl && (

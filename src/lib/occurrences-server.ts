@@ -163,10 +163,12 @@ export async function listResidentOccurrences(userId: string): Promise<{
 }
 
 /**
- * Busca TODAS as ocorrências do condomínio para o Painel do Síndico,
- * incluindo dados de identificação do morador (nome, bloco, apartamento).
+ * Busca as ocorrências do condomínio ativo (ou de todos os condomínios geridos)
+ * para o Painel do Síndico, incluindo dados de identificação do morador.
  */
-export async function listAllCondoOccurrences(): Promise<{
+export async function listAllCondoOccurrences(
+  condominiumId?: string | null,
+): Promise<{
   items: OccurrenceListItem[];
   schemaMissing: boolean;
 }> {
@@ -176,11 +178,16 @@ export async function listAllCondoOccurrences(): Promise<{
 
   const supabase = await createClient();
 
-  const { data: occurrences, error } = await supabase
+  let query = supabase
     .from("occurrences")
     .select("*")
-    .order("created_at", { ascending: false })
-    .returns<Occurrence[]>();
+    .order("created_at", { ascending: false });
+
+  if (condominiumId && condominiumId !== "all") {
+    query = query.eq("condominium_id", condominiumId);
+  }
+
+  const { data: occurrences, error } = await query.returns<Occurrence[]>();
 
   if (error) {
     if (isMissingRelationError(error)) {

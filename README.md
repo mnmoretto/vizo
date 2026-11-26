@@ -30,6 +30,12 @@ Web app mobile-first responsivo para registro e acompanhamento de **ocorrências
 - **Ações na tela de detalhes**: identificação completa do morador com atalho de WhatsApp, comentários/fotos intermediários do síndico e **modal de encerramento** (`Resolvido` ou `Cancelado`) exigindo parecer final obrigatório registrado na timeline
 - Migration SQL da Etapa 3 em [`supabase/stage3_sindico.sql`](./supabase/stage3_sindico.sql)
 
+### Etapa 4 — Multi-Condomínios, Convites e Condôminos Agrupados
+- **Gestão de Múltiplos Condomínios** (`/condominios`): um mesmo login de síndico pode criar e gerenciar vários condomínios informando Nome, CNPJ (com máscara e dígitos verificadores), Endereço e E-mail, alternando rapidamente pelo seletor de condomínio ativo
+- **Cadastro de Moradores Exclusivo por Convite** (`/convite/[token]`): botão **Gerar link de convite** no painel do síndico (com unidade opcional pré-definida, limite de usos, validade, cópia em 1 clique, compartilhamento via WhatsApp e revogação). Novos moradores só criam conta e concluem o onboarding com um convite válido
+- **Lista de Condôminos Agrupados por Unidade** (`/condominos`): moradores organizados por Bloco/Torre e Apartamento/Casa, agrupando automaticamente todos os moradores da mesma unidade e com botão rápido para convidar novos moradores para aquela unidade
+- Migration SQL da Etapa 4 em [`supabase/stage4_condominiums.sql`](./supabase/stage4_condominiums.sql)
+
 ## Como rodar localmente
 
 1. Instale as dependências:
@@ -47,7 +53,7 @@ cp .env.example .env.local
 Preencha `.env.local` com `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` do seu projeto Supabase.
 
 3. No painel do Supabase:
-   - Abra **SQL Editor** e execute em ordem: `supabase/schema.sql`, `supabase/stage2_occurrences.sql` e `supabase/stage3_sindico.sql`.
+   - Abra **SQL Editor** e execute em ordem: `supabase/schema.sql`, `supabase/stage2_occurrences.sql`, `supabase/stage3_sindico.sql` e `supabase/stage4_condominiums.sql`.
    - Em **Authentication → URL Configuration**, adicione `http://localhost:3000/auth/callback` (e a URL da Vercel em produção) em *Redirect URLs*.
    - Em **Authentication → Providers → Google**, habilite o provedor Google (Client ID e Client Secret do Google Cloud Console).
 

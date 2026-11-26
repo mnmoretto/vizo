@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 import { VizoLogo } from "@/components/brand/VizoLogo";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { getCurrentSessionProfile } from "@/lib/auth";
+import {
+  getInvitePreview,
+  getStoredInviteToken,
+} from "@/lib/condominiums-server";
 
 export const metadata: Metadata = {
   title: "Entrar",
@@ -12,30 +16,49 @@ export const metadata: Metadata = {
 };
 
 interface LoginPageProps {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; convite?: string; modo?: string }>;
 }
 
-async function LoginContent({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const session = await getCurrentSessionProfile();
+async function LoginContent({ searchParams }: LoginPageProps) {
+  const [session, params, cookieToken] = await Promise.all([
+    getCurrentSessionProfile(),
+    searchParams,
+    getStoredInviteToken(),
+  ]);
+
+  const inviteToken = params.convite?.trim() || cookieToken || null;
 
   if (session.isAuthenticated) {
     if (session.profile?.onboarding_completed) {
       redirect("/");
     }
-    redirect("/onboarding");
+    redirect(
+      inviteToken
+        ? `/onboarding?convite=${encodeURIComponent(inviteToken)}`
+        : "/onboarding",
+    );
   }
 
-  const params = await searchParams;
+  const invitePreview = inviteToken
+    ? await getInvitePreview(inviteToken)
+    : null;
+
   const initialError =
     params.error === "auth_callback"
       ? "Não foi possível concluir o acesso com Google. Tente novamente."
       : null;
 
-  return <AuthForm isDemo={session.isDemo} initialError={initialError} />;
+  const initialMode =
+    params.modo === "cadastro" && invitePreview?.valid ? "signup" : "login";
+
+  return (
+    <AuthForm
+      isDemo={session.isDemo}
+      initialError={initialError}
+      invitePreview={invitePreview}
+      initialMode={initialMode}
+    />
+  );
 }
 
 function LoginSkeleton() {

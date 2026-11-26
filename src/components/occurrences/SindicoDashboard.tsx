@@ -18,7 +18,9 @@ import {
   X,
 } from "lucide-react";
 import { STATUS_META, formatDateTimeBR } from "@/lib/occurrences";
+import { CondominiumSwitcher } from "@/components/condominiums/CondominiumSwitcher";
 import type {
+  CondominiumWithStats,
   OccurrenceListItem,
   OccurrenceStatus,
   Profile,
@@ -27,6 +29,8 @@ import type {
 interface SindicoDashboardProps {
   profile: Profile;
   occurrences: OccurrenceListItem[];
+  condominiums: CondominiumWithStats[];
+  activeCondoId: string;
   schemaMissing?: boolean;
 }
 
@@ -42,6 +46,8 @@ const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
 export function SindicoDashboard({
   profile,
   occurrences,
+  condominiums,
+  activeCondoId,
   schemaMissing = false,
 }: SindicoDashboardProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
@@ -186,6 +192,15 @@ export function SindicoDashboard({
         </div>
       </section>
 
+      {/* Seletor de Condomínio + Botão de Gerar Convite + Novo Condomínio */}
+      <CondominiumSwitcher
+        sindicoId={profile.id}
+        sindicoEmail={profile.email}
+        condominiums={condominiums}
+        activeCondoId={activeCondoId}
+        allowAllOption
+      />
+
       {schemaMissing && (
         <div
           role="alert"
@@ -193,15 +208,12 @@ export function SindicoDashboard({
         >
           <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
           <p className="text-xs leading-relaxed">
-            Execute os scripts SQL em{" "}
+            Execute o script{" "}
             <code className="font-mono bg-white/80 px-1 py-0.5 rounded">
-              supabase/stage2_occurrences.sql
+              supabase/stage4_condominiums.sql
             </code>{" "}
-            e{" "}
-            <code className="font-mono bg-white/80 px-1 py-0.5 rounded">
-              supabase/stage3_sindico.sql
-            </code>{" "}
-            no SQL Editor do Supabase.
+            no SQL Editor do Supabase para ativar o gerenciamento de condomínios
+            e convites.
           </p>
         </div>
       )}

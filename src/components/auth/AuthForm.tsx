@@ -1,23 +1,32 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  ArrowRight,
+  Building2,
   CheckCircle2,
   Eye,
   EyeOff,
   Info,
+  KeyRound,
+  Link2,
   Loader2,
   Lock,
   Mail,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { setDemoProfileCookieClient } from "@/lib/demo-session";
+import { setInviteTokenCookieClient } from "@/lib/condo-cookies";
+import { extractInviteToken } from "@/lib/validators";
+import type { InvitePreview } from "@/types/database";
 
 interface AuthFormProps {
   isDemo: boolean;
   initialError?: string | null;
+  invitePreview?: InvitePreview | null;
+  initialMode?: "login" | "signup";
 }
 
 type AuthMode = "login" | "signup";
@@ -65,14 +74,24 @@ function GoogleMark() {
   );
 }
 
-export function AuthForm({ isDemo, initialError }: AuthFormProps) {
+export function AuthForm({
+  isDemo,
+  initialError,
+  invitePreview = null,
+  initialMode = "login",
+}: AuthFormProps) {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>("login");
-  const [email, setEmail] = useState("");
+  const hasValidInvite = Boolean(invitePreview?.valid && invitePreview.token);
+
+  const [mode, setMode] = useState<AuthMode>(
+    hasValidInvite && initialMode === "signup" ? "signup" : initialMode,
+  );
+  const [email, setEmail] = useState(invitePreview?.target_email ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  const [manualInviteInput, setManualInviteInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(
@@ -80,10 +99,27 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
   );
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
+  // Persiste token de convite em cookie para sobreviver ao redirect do Google OAuth
+  useEffect(() => {
+    if (invitePreview?.valid && invitePreview.token) {
+      setInviteTokenCookieClient(invitePreview.token);
+    }
+  }, [invitePreview]);
+
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
     setErrorMessage(null);
     setInfoMessage(null);
+  }
+
+  function handleRedeemManualInvite(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = extractInviteToken(manualInviteInput);
+    if (!token) {
+      setErrorMessage("Cole o link ou código de convite enviado pelo síndico.");
+      return;
+    }
+    router.push(`/convite/${encodeURIComponent(token)}`);
   }
 
   function startDemoSession(demoEmail: string, demoName?: string) {
@@ -107,8 +143,18 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
     setErrorMessage(null);
     setInfoMessage(null);
 
+    if (mode === "signup" && !hasValidInvite && !isDemo) {
+      setErrorMessage(
+        "Para criar uma conta de morador, é necessário usar um link de convite enviado pelo síndico.",
+      );
+      return;
+    }
+
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    if (
+      !normalizedEmail ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ) {
       setErrorMessage("Digite um endereço de e-mail válido.");
       return;
     }
@@ -132,6 +178,10 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
         return;
       }
 
+      if (invitePreview?.valid && invitePreview.token) {
+        setInviteTokenCookieClient(invitePreview.token);
+      }
+
       const supabase = createClient();
 
       if (mode === "login") {
@@ -150,7 +200,6 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
         return;
       }
 
-      // Cadastro por e-mail e senha
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
@@ -164,17 +213,20 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
         return;
       }
 
-      // Se a confirmação de e-mail estiver ativa no projeto Supabase, session virá null
       if (!data.session) {
         setInfoMessage(
-          "Conta criada! Enviamos um link de confirmação para o seu e-mail. Após confirmar, você concluirá seu cadastro de morador.",
+          "Conta criada! Enviamos um link de confirmação para o seu e-mail. Após confirmar, você concluirá seu cadastro no condomínio.",
         );
         setPassword("");
         setConfirmPassword("");
         return;
       }
 
-      router.push("/onboarding");
+      const nextPath =
+        invitePreview?.token
+          ? `/onboarding?convite=${encodeURIComponent(invitePreview.token)}`
+          : "/onboarding";
+      router.push(nextPath);
       router.refresh();
     } catch {
       setErrorMessage("Erro inesperado de conexão. Tente novamente.");
@@ -193,6 +245,10 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
         await new Promise((resolve) => setTimeout(resolve, 350));
         startDemoSession("morador.google@vizo.app", "Marina Oliveira");
         return;
+      }
+
+      if (invitePreview?.valid && invitePreview.token) {
+        setInviteTokenCookieClient(invitePreview.token);
       }
 
       const supabase = createClient();
@@ -217,9 +273,27 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
   }
 
   const isBusy = loading || googleLoading;
+  const signupBlockedWithoutInvite =
+    mode === "signup" && !hasValidInvite && !isDemo;
 
   return (
     <div className="vizo-card rounded-2xl p-6 sm:p-7 animate-vizo-fade">
+      {/* Banner de convite válido */}
+      {hasValidInvite && invitePreview && (
+        <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-3 text-xs text-emerald-950">
+          <Building2 className="h-4 w-4 shrink-0 text-emerald-700 mt-0.5" />
+          <div>
+            <p className="font-semibold">
+              Convite válido · {invitePreview.condominium_name}
+            </p>
+            <p className="text-emerald-900/80 mt-0.5">
+              Crie sua conta abaixo ou entre com Google para concluir o cadastro
+              neste condomínio.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Alternador Entrar / Criar conta */}
       <div
         role="tablist"
@@ -266,35 +340,10 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
             <code className="font-mono text-[11px] bg-white/80 px-1 py-0.5 rounded">
               .env.local
             </code>{" "}
-            para autenticação real. Você já pode testar o fluxo completo abaixo.
+            para autenticação real.
           </p>
         </div>
       )}
-
-      {/* Botão Google OAuth */}
-      <button
-        id="btn-google-auth"
-        type="button"
-        onClick={handleGoogleLogin}
-        disabled={isBusy}
-        className="vizo-btn-secondary w-full"
-      >
-        {googleLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-slate-600" />
-        ) : (
-          <GoogleMark />
-        )}
-        <span>Continuar com Google</span>
-      </button>
-
-      {/* Divisor */}
-      <div className="relative my-5 flex items-center justify-center">
-        <div className="w-full border-t border-slate-200" />
-        <span className="bg-white px-3 text-xs font-medium text-slate-400 shrink-0">
-          ou use seu e-mail
-        </span>
-        <div className="w-full border-t border-slate-200" />
-      </div>
 
       {/* Feedback de erro ou sucesso */}
       {errorMessage && (
@@ -317,118 +366,207 @@ export function AuthForm({ isDemo, initialError }: AuthFormProps) {
         </div>
       )}
 
-      {/* Formulário E-mail/Senha */}
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <div>
-          <label
-            htmlFor="auth-email"
-            className="block text-sm font-medium text-slate-700 mb-1.5"
-          >
-            E-mail
-          </label>
-          <div className="relative">
-            <Mail className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              id="auth-email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="nome@exemplo.com"
-              className="vizo-input pl-11"
-              disabled={isBusy}
-            />
+      {/* Bloqueio de cadastro comum sem convite do síndico */}
+      {signupBlockedWithoutInvite ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200/90 bg-amber-50/70 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-bold text-amber-950">
+              <KeyRound className="h-4 w-4 text-amber-700 shrink-0" />
+              <span>Cadastro exclusivo por convite</span>
+            </div>
+            <p className="text-xs leading-relaxed text-amber-900">
+              Para segurança do condomínio, novos moradores precisam de um{" "}
+              <strong>link de convite gerado pelo síndico</strong> para criar
+              uma conta.
+            </p>
           </div>
-        </div>
 
-        <div>
-          <label
-            htmlFor="auth-password"
-            className="block text-sm font-medium text-slate-700 mb-1.5"
+          <form
+            onSubmit={handleRedeemManualInvite}
+            className="space-y-3"
+            noValidate
           >
-            Senha
-          </label>
-          <div className="relative">
-            <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              id="auth-password"
-              name="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete={
-                mode === "login" ? "current-password" : "new-password"
-              }
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={
-                mode === "login" ? "Sua senha" : "Mínimo de 6 caracteres"
-              }
-              className="vizo-input pl-11 pr-11"
-              disabled={isBusy}
-            />
+            <div>
+              <label
+                htmlFor="manual-invite-input"
+                className="block text-xs font-semibold text-slate-700 mb-1.5"
+              >
+                Recebeu um convite? Cole o link ou código aqui
+              </label>
+              <div className="relative">
+                <Link2 className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  id="manual-invite-input"
+                  type="text"
+                  value={manualInviteInput}
+                  onChange={(e) => {
+                    setManualInviteInput(e.target.value);
+                    if (errorMessage) setErrorMessage(null);
+                  }}
+                  placeholder="https://.../convite/... ou código"
+                  className="vizo-input pl-11 text-sm"
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="vizo-btn-primary w-full text-sm">
+              <span>Validar convite e continuar</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-slate-500">
+            Já possui conta no Vizo?{" "}
             <button
               type="button"
-              onClick={() => setShowPassword((prev) => !prev)}
-              aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              onClick={() => switchMode("login")}
+              className="font-semibold text-teal-800 hover:underline cursor-pointer"
             >
-              {showPassword ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
+              Fazer login
             </button>
-          </div>
+          </p>
         </div>
+      ) : (
+        <>
+          {/* Botão Google OAuth */}
+          <button
+            id="btn-google-auth"
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={isBusy}
+            className="vizo-btn-secondary w-full"
+          >
+            {googleLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-slate-600" />
+            ) : (
+              <GoogleMark />
+            )}
+            <span>Continuar com Google</span>
+          </button>
 
-        {mode === "signup" && (
-          <div>
-            <label
-              htmlFor="auth-confirm-password"
-              className="block text-sm font-medium text-slate-700 mb-1.5"
-            >
-              Confirmar senha
-            </label>
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                id="auth-confirm-password"
-                name="confirmPassword"
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                required
-                minLength={6}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repita sua senha"
-                className="vizo-input pl-11"
-                disabled={isBusy}
-              />
-            </div>
+          {/* Divisor */}
+          <div className="relative my-5 flex items-center justify-center">
+            <div className="w-full border-t border-slate-200" />
+            <span className="bg-white px-3 text-xs font-medium text-slate-400 shrink-0">
+              ou use seu e-mail
+            </span>
+            <div className="w-full border-t border-slate-200" />
           </div>
-        )}
 
-        <button
-          id="btn-email-submit"
-          type="submit"
-          disabled={isBusy}
-          className="vizo-btn-primary w-full mt-2"
-        >
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-          <span>
-            {mode === "login" ? "Entrar no Vizo" : "Criar conta gratuita"}
-          </span>
-        </button>
-      </form>
+          {/* Formulário E-mail/Senha */}
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            <div>
+              <label
+                htmlFor="auth-email"
+                className="block text-sm font-medium text-slate-700 mb-1.5"
+              >
+                E-mail
+              </label>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  id="auth-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nome@exemplo.com"
+                  className="vizo-input pl-11"
+                  disabled={isBusy}
+                />
+              </div>
+            </div>
 
-      <p className="mt-5 text-center text-xs text-slate-500 leading-relaxed">
-        {mode === "signup"
-          ? "Novas contas entram inicialmente com perfil de Morador e completam o cadastro da unidade no próximo passo."
-          : "Primeiro acesso? Ao entrar com Google ou criar conta, solicitaremos os dados da sua unidade."}
-      </p>
+            <div>
+              <label
+                htmlFor="auth-password"
+                className="block text-sm font-medium text-slate-700 mb-1.5"
+              >
+                Senha
+              </label>
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  id="auth-password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete={
+                    mode === "login" ? "current-password" : "new-password"
+                  }
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={
+                    mode === "login" ? "Sua senha" : "Mínimo de 6 caracteres"
+                  }
+                  className="vizo-input pl-11 pr-11"
+                  disabled={isBusy}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {mode === "signup" && (
+              <div>
+                <label
+                  htmlFor="auth-confirm-password"
+                  className="block text-sm font-medium text-slate-700 mb-1.5"
+                >
+                  Confirmar senha
+                </label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    id="auth-confirm-password"
+                    name="confirmPassword"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repita sua senha"
+                    className="vizo-input pl-11"
+                    disabled={isBusy}
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              id="btn-email-submit"
+              type="submit"
+              disabled={isBusy}
+              className="vizo-btn-primary w-full mt-2"
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              <span>
+                {mode === "login" ? "Entrar no Vizo" : "Criar conta no condomínio"}
+              </span>
+            </button>
+          </form>
+
+          <p className="mt-5 text-center text-xs text-slate-500 leading-relaxed">
+            {hasValidInvite
+              ? "No próximo passo você confirmará seus dados pessoais e sua unidade no condomínio."
+              : "Acesso exclusivo para síndicos e moradores convidados pelo condomínio."}
+          </p>
+        </>
+      )}
     </div>
   );
 }

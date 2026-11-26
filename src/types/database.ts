@@ -1,5 +1,51 @@
 export type UserRole = "morador" | "sindico";
 
+export interface Condominium {
+  id: string;
+  sindico_id: string;
+  name: string;
+  cnpj: string;
+  address: string;
+  contact_email: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CondominiumWithStats extends Condominium {
+  residentsCount: number;
+  openOccurrencesCount: number;
+  totalOccurrencesCount: number;
+}
+
+export interface CondominiumInvite {
+  id: string;
+  condominium_id: string;
+  created_by: string;
+  token: string;
+  prefilled_block: string | null;
+  prefilled_unit: string | null;
+  target_email: string | null;
+  max_uses: number;
+  uses_count: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface InvitePreview {
+  valid: boolean;
+  reason?: "not_found" | "revoked" | "expired" | "exhausted" | null;
+  token?: string;
+  condominium_id?: string;
+  condominium_name?: string;
+  condominium_address?: string;
+  prefilled_block?: string | null;
+  prefilled_unit?: string | null;
+  target_email?: string | null;
+  expires_at?: string | null;
+  remaining_uses?: number;
+}
+
 export interface Profile {
   id: string;
   email: string | null;
@@ -9,6 +55,7 @@ export interface Profile {
   block: string | null;
   unit: string | null;
   role: UserRole;
+  condominium_id?: string | null;
   onboarding_completed: boolean;
   created_at?: string;
   updated_at?: string;
@@ -42,6 +89,7 @@ export interface Occurrence {
   id: string;
   protocol: string;
   user_id: string;
+  condominium_id?: string | null;
   room: string;
   description: string;
   status: OccurrenceStatus;
@@ -52,10 +100,20 @@ export interface Occurrence {
 export interface ResidentSummary {
   id: string;
   full_name: string | null;
+  cpf?: string | null;
   block: string | null;
   unit: string | null;
   phone: string | null;
   email: string | null;
+  condominium_id?: string | null;
+  created_at?: string;
+}
+
+export interface ResidentUnitGroup {
+  key: string;
+  block: string;
+  unit: string;
+  residents: ResidentSummary[];
 }
 
 export interface OccurrencePhoto {

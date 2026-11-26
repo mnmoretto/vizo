@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 import { VizoLogo } from "@/components/brand/VizoLogo";
 import { OnboardingForm } from "@/components/onboarding/OnboardingForm";
 import { getCurrentSessionProfile } from "@/lib/auth";
+import {
+  getInvitePreview,
+  getStoredInviteToken,
+} from "@/lib/condominiums-server";
 
 export const metadata: Metadata = {
   title: "Completar cadastro",
@@ -11,8 +15,16 @@ export const metadata: Metadata = {
     "Informe seus dados obrigatórios e sua unidade residencial para liberar o acesso ao Vizo.",
 };
 
-async function OnboardingContent() {
-  const session = await getCurrentSessionProfile();
+interface OnboardingPageProps {
+  searchParams: Promise<{ convite?: string }>;
+}
+
+async function OnboardingContent({ searchParams }: OnboardingPageProps) {
+  const [session, params, cookieToken] = await Promise.all([
+    getCurrentSessionProfile(),
+    searchParams,
+    getStoredInviteToken(),
+  ]);
 
   if (!session.isAuthenticated || !session.userId) {
     redirect("/login");
@@ -22,12 +34,18 @@ async function OnboardingContent() {
     redirect("/");
   }
 
+  const inviteToken = params.convite?.trim() || cookieToken || null;
+  const invitePreview = inviteToken
+    ? await getInvitePreview(inviteToken)
+    : null;
+
   return (
     <OnboardingForm
       isDemo={session.isDemo}
       userId={session.userId}
       email={session.email}
       initialProfile={session.profile}
+      invitePreview={invitePreview}
     />
   );
 }
@@ -49,7 +67,7 @@ function OnboardingSkeleton() {
   );
 }
 
-export default function OnboardingPage() {
+export default function OnboardingPage({ searchParams }: OnboardingPageProps) {
   return (
     <div className="min-h-screen flex flex-col justify-center bg-background px-4 py-8 sm:px-6">
       <div className="mx-auto w-full max-w-xl space-y-6">
@@ -59,7 +77,7 @@ export default function OnboardingPage() {
 
         <main>
           <Suspense fallback={<OnboardingSkeleton />}>
-            <OnboardingContent />
+            <OnboardingContent searchParams={searchParams} />
           </Suspense>
         </main>
       </div>

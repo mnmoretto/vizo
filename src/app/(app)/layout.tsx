@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { getCurrentSessionProfile } from "@/lib/auth";
+import { getCondominiumById } from "@/lib/condominiums-server";
 
 async function AuthenticatedShell({
   children,
@@ -18,8 +19,17 @@ async function AuthenticatedShell({
     redirect("/onboarding");
   }
 
+  const residentCondo =
+    session.profile.role === "morador" && session.profile.condominium_id
+      ? await getCondominiumById(session.profile.condominium_id)
+      : null;
+
   return (
-    <AppShell profile={session.profile} isDemo={session.isDemo}>
+    <AppShell
+      profile={session.profile}
+      condominiumName={residentCondo?.name ?? null}
+      isDemo={session.isDemo}
+    >
       {children}
     </AppShell>
   );

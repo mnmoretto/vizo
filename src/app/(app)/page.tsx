@@ -8,6 +8,10 @@ import {
   listAllCondoOccurrences,
   listResidentOccurrences,
 } from "@/lib/occurrences-server";
+import {
+  getActiveCondoCookie,
+  listSindicoCondominiums,
+} from "@/lib/condominiums-server";
 
 export const metadata: Metadata = {
   title: "Ocorrências",
@@ -23,12 +27,31 @@ async function HomeContent() {
   }
 
   if (session.profile.role === "sindico") {
-    const { items, schemaMissing } = await listAllCondoOccurrences();
+    const [{ condominiums, schemaMissing: condoSchemaMissing }, savedCondoId] =
+      await Promise.all([
+        listSindicoCondominiums(session.userId),
+        getActiveCondoCookie(),
+      ]);
+
+    const activeCondoId =
+      savedCondoId === "all" && condominiums.length > 1
+        ? "all"
+        : (condominiums.find((c) => c.id === savedCondoId)?.id ??
+          condominiums[0]?.id ??
+          "all");
+
+    const { items, schemaMissing: occSchemaMissing } =
+      await listAllCondoOccurrences(
+        condominiums.length === 0 ? "all" : activeCondoId,
+      );
+
     return (
       <SindicoDashboard
         profile={session.profile}
         occurrences={items}
-        schemaMissing={schemaMissing}
+        condominiums={condominiums}
+        activeCondoId={activeCondoId}
+        schemaMissing={condoSchemaMissing || occSchemaMissing}
       />
     );
   }
@@ -52,7 +75,7 @@ export default function HomePage() {
       fallback={
         <div className="space-y-4 animate-pulse">
           <div className="h-8 w-52 rounded-lg bg-slate-200/70" />
-          <div className="h-32 rounded-2xl bg-white border border-slate-200/70" />
+          <div className="h-20 rounded-2xl bg-white border border-slate-200/70" />
           <div className="h-32 rounded-2xl bg-white border border-slate-200/70" />
         </div>
       }

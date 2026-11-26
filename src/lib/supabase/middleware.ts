@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig, isSupabaseConfigured } from "./config";
 import { DEMO_SESSION_COOKIE, parseDemoProfile } from "@/lib/demo-session";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/convite"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(

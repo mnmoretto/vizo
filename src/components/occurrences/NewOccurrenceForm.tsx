@@ -14,6 +14,7 @@ import {
   Send,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   MAX_PHOTOS_PER_UPLOAD,
   MIN_DESCRIPTION_LENGTH,
@@ -148,6 +149,13 @@ export function NewOccurrenceForm({
     setStatusStep("Registrando ocorrência e gerando protocolo...");
 
     try {
+      if (!isSupabaseConfigured()) {
+        setSubmitError(
+          "Supabase não conectado: o arquivo .env.local não foi carregado. Crie/recrie o .env.local na raiz do projeto (em UTF-8 sem BOM) e reinicie o servidor.",
+        );
+        return;
+      }
+
       const supabase = createClient();
 
       const finalRoom =
@@ -236,7 +244,7 @@ export function NewOccurrenceForm({
 
         if (photoInsertError) {
           setSubmitError(
-            "Ocorrência registrada, mas houve falha ao vincular os metadados das fotos.",
+            `Ocorrência registrada, mas houve falha ao vincular as fotos: ${photoInsertError.message}`,
           );
           router.push(`/ocorrencias/${created.id}`);
           router.refresh();
@@ -246,8 +254,13 @@ export function NewOccurrenceForm({
 
       router.push(`/ocorrencias/${created.id}?criado=1`);
       router.refresh();
-    } catch {
-      setSubmitError("Erro inesperado ao enviar o registro. Tente novamente.");
+    } catch (err) {
+      console.error("[Vizo] Erro ao criar ocorrência:", err);
+      const detail =
+        err instanceof Error && err.message ? ` (${err.message})` : "";
+      setSubmitError(
+        `Erro inesperado ao enviar o registro${detail}. Tente novamente.`,
+      );
     } finally {
       setSubmitting(false);
       setStatusStep(null);

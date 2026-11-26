@@ -225,8 +225,11 @@ export function OccurrenceDetail({
       setPendingPhotos([]);
       setUpdateSuccess(true);
       router.refresh();
-    } catch {
-      setUpdateError("Erro inesperado ao salvar atualização.");
+    } catch (err) {
+      console.error("[Vizo] Erro ao adicionar atualização:", err);
+      const detail =
+        err instanceof Error && err.message ? ` (${err.message})` : "";
+      setUpdateError(`Erro inesperado ao salvar atualização${detail}.`);
     } finally {
       setSubmittingUpdate(false);
       setUploadStep(null);

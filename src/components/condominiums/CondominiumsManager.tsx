@@ -10,12 +10,14 @@ import {
   Link2,
   Mail,
   MapPin,
+  Pencil,
   Plus,
   Users,
 } from "lucide-react";
 import { setActiveCondoCookieClient } from "@/lib/condo-cookies";
 import { formatCNPJ } from "@/lib/validators";
 import { CreateCondominiumModal } from "@/components/condominiums/CreateCondominiumModal";
+import { EditCondominiumModal } from "@/components/condominiums/EditCondominiumModal";
 import { InviteLinkModal } from "@/components/condominiums/InviteLinkModal";
 import type { CondominiumWithStats } from "@/types/database";
 
@@ -36,6 +38,7 @@ export function CondominiumsManager({
 }: CondominiumsManagerProps) {
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editCondo, setEditCondo] = useState<CondominiumWithStats | null>(null);
   const [inviteCondo, setInviteCondo] = useState<CondominiumWithStats | null>(
     null,
   );
@@ -202,6 +205,15 @@ export function CondominiumsManager({
                     <ClipboardList className="h-4 w-4 text-slate-600" />
                     <span>Abrir ocorrências</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditCondo(condo)}
+                    className="vizo-btn-secondary py-2 px-3.5 text-xs sm:text-sm"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Editar</span>
+                  </button>
                 </div>
               </article>
             );
@@ -214,6 +226,11 @@ export function CondominiumsManager({
         onClose={() => setCreateOpen(false)}
         sindicoId={sindicoId}
         defaultEmail={sindicoEmail}
+      />
+
+      <EditCondominiumModal
+        condominium={editCondo}
+        onClose={() => setEditCondo(null)}
       />
 
       <InviteLinkModal

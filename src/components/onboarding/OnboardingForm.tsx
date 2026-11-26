@@ -6,6 +6,7 @@ import {
   AlertCircle,
   ArrowRight,
   Building2,
+  Check,
   DoorOpen,
   IdCard,
   KeyRound,
@@ -29,6 +30,7 @@ import {
   extractInviteToken,
   formatCPF,
   formatPhone,
+  isValidCPF,
   onlyDigits,
   validateOnboardingFields,
   type OnboardingFieldErrors,
@@ -461,9 +463,15 @@ export function OnboardingForm({
                 }}
                 placeholder="000.000.000-00"
                 aria-invalid={Boolean(fieldErrors.cpf)}
-                className={`vizo-input pl-11 font-mono text-[14px] ${fieldErrors.cpf ? "vizo-input-error" : ""}`}
+                className={`vizo-input pl-11 pr-10 font-mono text-[14px] ${fieldErrors.cpf ? "vizo-input-error" : ""}`}
                 disabled={saving}
               />
+              {isValidCPF(cpf) && (
+                <Check
+                  aria-label="CPF válido"
+                  className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-600"
+                />
+              )}
             </div>
             {fieldErrors.cpf && (
               <p className="mt-1.5 text-xs font-medium text-rose-700">

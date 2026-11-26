@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { OCCURRENCES_BUCKET } from "@/lib/occurrences";
 import type {
+  Condominium,
   Occurrence,
   OccurrenceDetailData,
   OccurrenceListItem,
@@ -27,7 +28,7 @@ function isMissingRelationError(
 
 /**
  * Hidrata uma lista de ocorrências com miniaturas assinadas, contagem de fotos,
- * contagem de atualizações e (opcionalmente) dados dos moradores.
+ * contagem de atualizações, papel do último autor na timeline e dados dos moradores.
  */
 async function hydrateOccurrenceList(
   occurrences: Occurrence[],
@@ -49,8 +50,9 @@ async function hydrateOccurrenceList(
       .order("created_at", { ascending: true }),
     supabase
       .from("occurrence_updates")
-      .select("id, occurrence_id")
-      .in("occurrence_id", occurrenceIds),
+      .select("id, occurrence_id, user_id, created_at")
+      .in("occurrence_id", occurrenceIds)
+      .order("created_at", { ascending: true }),
     includeResidents && residentIds.length > 0
       ? supabase
           .from("profiles")
@@ -75,11 +77,29 @@ async function hydrateOccurrenceList(
   }
 
   const updatesCountByOccurrence = new Map<string, number>();
+  const lastUpdateUserByOccurrence = new Map<string, string>();
+  const updateAuthorIds = new Set<string>();
+
   for (const upd of updatesResult.data ?? []) {
     updatesCountByOccurrence.set(
       upd.occurrence_id,
       (updatesCountByOccurrence.get(upd.occurrence_id) ?? 0) + 1,
     );
+    lastUpdateUserByOccurrence.set(upd.occurrence_id, upd.user_id);
+    if (upd.user_id) updateAuthorIds.add(upd.user_id);
+  }
+
+  // Busca papel dos últimos autores das atualizações para o badge de resposta
+  const authorRoleMap = new Map<string, UserRole>();
+  if (updateAuthorIds.size > 0) {
+    const { data: authorRoles } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .in("id", Array.from(updateAuthorIds));
+
+    for (const row of authorRoles ?? []) {
+      authorRoleMap.set(row.id, row.role as UserRole);
+    }
   }
 
   const residentById = new Map<string, ResidentSummary>();
@@ -118,12 +138,16 @@ async function hydrateOccurrenceList(
   return occurrences.map((occ) => {
     const thumbPath = thumbnailPathByOccurrence.get(occ.id);
     const photos = photosByOccurrence.get(occ.id) ?? [];
+    const lastUserId = lastUpdateUserByOccurrence.get(occ.id);
 
     return {
       ...occ,
       thumbnailUrl: thumbPath ? (signedUrlByPath.get(thumbPath) ?? null) : null,
       photosCount: photos.length,
       updatesCount: updatesCountByOccurrence.get(occ.id) ?? 0,
+      lastUpdateAuthorRole: lastUserId
+        ? (authorRoleMap.get(lastUserId) ?? null)
+        : null,
       resident: includeResidents
         ? (residentById.get(occ.user_id) ?? null)
         : null,
@@ -202,7 +226,7 @@ export async function listAllCondoOccurrences(
 
 /**
  * Carrega os detalhes completos de uma ocorrência com dados do morador,
- * fotos iniciais e toda a linha do tempo cronológica.
+ * dados do condomínio (para relatório PDF), fotos iniciais e linha do tempo.
  */
 export async function getOccurrenceDetail(
   occurrenceId: string,
@@ -237,8 +261,6 @@ export async function getOccurrenceDetail(
     return { occurrence: null, schemaMissing: false };
   }
 
-  // Busca atualizações tentando incluir status_change (Etapa 3) com fallback automático
-  // caso o SQL da Etapa 3 ainda não tenha sido aplicado no banco.
   let rawUpdates: {
     id: string;
     occurrence_id: string;
@@ -265,7 +287,7 @@ export async function getOccurrenceDetail(
     rawUpdates = updatesWithStatus.data ?? [];
   }
 
-  const [photosResult, residentResult] = await Promise.all([
+  const [photosResult, residentResult, condoResult] = await Promise.all([
     supabase
       .from("occurrence_photos")
       .select(
@@ -279,11 +301,17 @@ export async function getOccurrenceDetail(
       .select("id, full_name, block, unit, phone, email")
       .eq("id", occurrence.user_id)
       .maybeSingle<ResidentSummary>(),
+    occurrence.condominium_id
+      ? supabase
+          .from("condominiums")
+          .select("id, name, cnpj, address")
+          .eq("id", occurrence.condominium_id)
+          .maybeSingle<Pick<Condominium, "id" | "name" | "cnpj" | "address">>()
+      : Promise.resolve({ data: null }),
   ]);
 
   const rawPhotos = photosResult.data ?? [];
 
-  // Busca nomes/papéis dos autores das atualizações
   const authorIds = Array.from(
     new Set(rawUpdates.map((u) => u.user_id).filter(Boolean)),
   );
@@ -306,7 +334,6 @@ export async function getOccurrenceDetail(
     }
   }
 
-  // Gera URLs assinadas para todas as fotos da ocorrência em lote
   const storagePaths = rawPhotos.map((p) => p.storage_path);
   const signedUrlByPath = new Map<string, string>();
 
@@ -352,6 +379,7 @@ export async function getOccurrenceDetail(
     occurrence: {
       ...occurrence,
       resident: residentResult.data ?? null,
+      condominium: condoResult.data ?? null,
       initialPhotos,
       updates,
     },

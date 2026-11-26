@@ -36,6 +36,14 @@ Web app mobile-first responsivo para registro e acompanhamento de **ocorrências
 - **Lista de Condôminos Agrupados por Unidade** (`/condominos`): moradores organizados por Bloco/Torre e Apartamento/Casa, agrupando automaticamente todos os moradores da mesma unidade e com botão rápido para convidar novos moradores para aquela unidade
 - Migration SQL da Etapa 4 em [`supabase/stage4_condominiums.sql`](./supabase/stage4_condominiums.sql)
 
+### Etapa 5 — Blindagem Multi-Tenant & Gestão Completa
+- **Blindagem de segurança RLS + RPC**: isolamento completo de atualizações, fotos, Storage e `close_occurrence` por condomínio gerido, proteção de `condominium_id` em `profiles` e `/auth/callback` compatível com proxies reversos
+- **Recuperação de senha** (`/login` → *Esqueci minha senha* → `/redefinir-senha`)
+- **Edição completa**: edição de dados pessoais no perfil, edição de dados de condomínios, alteração de unidade e desvinculação de moradores pelo síndico, além de confirmação antes de revogar convites
+- **Escopo, Categoria, Urgência e UX avançada**: escolha entre *Minha Unidade* e *Área Comum*, categoria técnica, prioridade (*Normal*, *Alta*, *Emergência*), busca ampliada por protocolo/morador/local, indicador de tempo em aberto e última resposta, Lightbox com setas e **Exportar PDF** formal da ocorrência
+- **PWA Instalável**: Web App Manifest (`manifest.ts`) e ícones PNG nativos para instalar na tela inicial do celular
+- Migration SQL da Etapa 5 em [`supabase/stage5_hardening_and_features.sql`](./supabase/stage5_hardening_and_features.sql)
+
 ## Como rodar localmente
 
 1. Instale as dependências:
@@ -53,7 +61,7 @@ cp .env.example .env.local
 Preencha `.env.local` com `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` do seu projeto Supabase.
 
 3. No painel do Supabase:
-   - Abra **SQL Editor** e execute em ordem: `supabase/schema.sql`, `supabase/stage2_occurrences.sql`, `supabase/stage3_sindico.sql` e `supabase/stage4_condominiums.sql`.
+   - Abra **SQL Editor** e execute em ordem: `supabase/schema.sql`, `supabase/stage2_occurrences.sql`, `supabase/stage3_sindico.sql`, `supabase/stage4_condominiums.sql` e `supabase/stage5_hardening_and_features.sql`.
    - Em **Authentication → URL Configuration**, adicione `http://localhost:3000/auth/callback` (e a URL da Vercel em produção) em *Redirect URLs*.
    - Em **Authentication → Providers → Google**, habilite o provedor Google (Client ID e Client Secret do Google Cloud Console).
 

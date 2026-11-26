@@ -70,6 +70,8 @@ export interface OnboardingPayload {
 }
 
 export type OccurrenceStatus = "aberto" | "resolvido" | "cancelado";
+export type OccurrenceScope = "unidade" | "area_comum";
+export type OccurrencePriority = "normal" | "alta" | "emergencia";
 
 export const ROOM_OPTIONS = [
   "Sala",
@@ -83,7 +85,33 @@ export const ROOM_OPTIONS = [
   "Outro",
 ] as const;
 
+export const COMMON_AREA_OPTIONS = [
+  "Elevador",
+  "Garagem",
+  "Portaria / Hall",
+  "Corredor / Escada",
+  "Piscina / Lazer",
+  "Salão de Festas",
+  "Área Externa / Jardim",
+  "Telhado / Caixa d'Água",
+  "Casa de Bombas / Elétrica",
+  "Outro",
+] as const;
+
+export const CATEGORY_OPTIONS = [
+  "Hidráulica",
+  "Elétrica",
+  "Infiltração",
+  "Estrutural",
+  "Limpeza",
+  "Barulho / Convivência",
+  "Equipamentos",
+  "Outro",
+] as const;
+
 export type RoomOption = (typeof ROOM_OPTIONS)[number];
+export type CommonAreaOption = (typeof COMMON_AREA_OPTIONS)[number];
+export type CategoryOption = (typeof CATEGORY_OPTIONS)[number];
 
 export interface Occurrence {
   id: string;
@@ -91,6 +119,9 @@ export interface Occurrence {
   user_id: string;
   condominium_id?: string | null;
   room: string;
+  scope?: OccurrenceScope | null;
+  category?: string | null;
+  priority?: OccurrencePriority | null;
   description: string;
   status: OccurrenceStatus;
   created_at: string;
@@ -143,11 +174,13 @@ export interface OccurrenceListItem extends Occurrence {
   thumbnailUrl: string | null;
   photosCount: number;
   updatesCount: number;
+  lastUpdateAuthorRole?: UserRole | null;
   resident?: ResidentSummary | null;
 }
 
 export interface OccurrenceDetailData extends Occurrence {
   resident?: ResidentSummary | null;
+  condominium?: Pick<Condominium, "id" | "name" | "cnpj" | "address"> | null;
   initialPhotos: OccurrencePhoto[];
   updates: OccurrenceUpdate[];
 }

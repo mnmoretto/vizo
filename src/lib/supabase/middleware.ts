@@ -87,8 +87,11 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Permite finalizar callback OAuth sem interceptação
-  if (pathname.startsWith("/auth/callback")) {
+  // Permite finalizar callback OAuth e redefinição de senha sem interceptação
+  if (
+    pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/redefinir-senha")
+  ) {
     return supabaseResponse;
   }
 

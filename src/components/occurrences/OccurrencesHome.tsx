@@ -13,9 +13,16 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Shield,
+  Tag,
 } from "lucide-react";
 import { getFirstName } from "@/lib/validators";
-import { STATUS_META, formatDateTimeBR } from "@/lib/occurrences";
+import {
+  PRIORITY_META,
+  STATUS_META,
+  formatDateTimeBR,
+  formatOpenAgeBR,
+} from "@/lib/occurrences";
 import type {
   OccurrenceListItem,
   OccurrenceStatus,
@@ -74,7 +81,8 @@ export function OccurrencesHome({
             Olá, {firstName}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Acompanhe seus protocolos ou registre um novo ocorrido no seu imóvel.
+            Acompanhe seus protocolos ou registre um novo ocorrido na sua unidade
+            ou área comum.
           </p>
         </div>
 
@@ -88,7 +96,6 @@ export function OccurrencesHome({
         </Link>
       </section>
 
-      {/* Aviso amigável caso o script SQL da Etapa 2 ainda não tenha sido rodado */}
       {schemaMissing && (
         <div
           role="alert"
@@ -97,15 +104,14 @@ export function OccurrencesHome({
           <AlertTriangle className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
           <div className="space-y-1">
             <p className="font-semibold">
-              Banco de dados da Etapa 2 pendente no Supabase
+              Banco de dados pendente no Supabase
             </p>
             <p className="text-xs leading-relaxed text-amber-900">
-              Execute o script{" "}
+              Execute os scripts SQL em{" "}
               <code className="font-mono bg-white/80 px-1.5 py-0.5 rounded">
-                supabase/stage2_occurrences.sql
+                supabase/
               </code>{" "}
-              no SQL Editor do Supabase para ativar o registro de ocorrências,
-              timeline e upload de fotos.
+              no SQL Editor do Supabase.
             </p>
           </div>
         </div>
@@ -191,6 +197,13 @@ export function OccurrencesHome({
           <ul className="space-y-3" role="list">
             {filteredOccurrences.map((item) => {
               const statusMeta = STATUS_META[item.status];
+              const priority = item.priority ?? "normal";
+              const priorityMeta = PRIORITY_META[priority];
+              const age =
+                item.status === "aberto"
+                  ? formatOpenAgeBR(item.created_at)
+                  : null;
+
               return (
                 <li key={item.id}>
                   <Link
@@ -223,11 +236,21 @@ export function OccurrencesHome({
                     {/* Dados principais */}
                     <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
                       <div className="space-y-1.5">
-                        {/* Protocolo + Status */}
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-mono text-xs font-semibold tracking-tight text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                            {item.protocol}
-                          </span>
+                        {/* Protocolo + Urgência + Status */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-mono text-xs font-semibold tracking-tight text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                              {item.protocol}
+                            </span>
+
+                            {priority !== "normal" && (
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${priorityMeta.badgeClass}`}
+                              >
+                                {priorityMeta.label}
+                              </span>
+                            )}
+                          </div>
 
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusMeta.badgeClass}`}
@@ -239,10 +262,25 @@ export function OccurrencesHome({
                           </span>
                         </div>
 
-                        {/* Cômodo */}
-                        <div className="flex items-center gap-1.5 text-sm sm:text-base font-semibold text-slate-900 group-hover:text-teal-800 transition-colors">
-                          <DoorClosed className="h-4 w-4 shrink-0 text-teal-700" />
-                          <span className="truncate">{item.room}</span>
+                        {/* Cômodo + Categoria / Área Comum */}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="inline-flex items-center gap-1.5 text-sm sm:text-base font-semibold text-slate-900 group-hover:text-teal-800 transition-colors">
+                            <DoorClosed className="h-4 w-4 shrink-0 text-teal-700" />
+                            <span>{item.room}</span>
+                          </span>
+
+                          {item.scope === "area_comum" && (
+                            <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-800">
+                              Área Comum
+                            </span>
+                          )}
+
+                          {item.category && item.category !== "Outro" && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                              <Tag className="h-3 w-3 text-slate-400" />
+                              {item.category}
+                            </span>
+                          )}
                         </div>
 
                         {/* Prévia curta da descrição */}
@@ -251,14 +289,34 @@ export function OccurrencesHome({
                         </p>
                       </div>
 
-                      {/* Rodapé: Data/Hora + Atualizações */}
-                      <div className="mt-2.5 flex items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
-                        <span className="inline-flex items-center gap-1 truncate">
-                          <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                          <span>{formatDateTimeBR(item.created_at)}</span>
-                        </span>
+                      {/* Rodapé: Data/Hora + Tempo em aberto + Respondido pelo síndico */}
+                      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-500">
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            <span>{formatDateTimeBR(item.created_at)}</span>
+                          </span>
+                          {age && (
+                            <span
+                              className={`font-medium ${
+                                age.days >= 5
+                                  ? "text-amber-700"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              · Aberta {age.label}
+                            </span>
+                          )}
+                        </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                          {item.status === "aberto" &&
+                            item.lastUpdateAuthorRole === "sindico" && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200/80 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                                <Shield className="h-2.5 w-2.5" />
+                                Respondido
+                              </span>
+                            )}
                           {item.updatesCount > 0 && (
                             <span className="inline-flex items-center gap-1 font-medium text-teal-700">
                               <MessageSquare className="h-3.5 w-3.5" />

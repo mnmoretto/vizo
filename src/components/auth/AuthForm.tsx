@@ -92,6 +92,7 @@ export function AuthForm({
   const [showPassword, setShowPassword] = useState(false);
 
   const [manualInviteInput, setManualInviteInput] = useState("");
+  const [forgotMode, setForgotMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(
@@ -108,8 +109,55 @@ export function AuthForm({
 
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
+    setForgotMode(false);
     setErrorMessage(null);
     setInfoMessage(null);
+  }
+
+  async function handlePasswordReset(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (
+      !normalizedEmail ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+    ) {
+      setErrorMessage("Digite o e-mail cadastrado na sua conta.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (isDemo) {
+        setInfoMessage(
+          "No modo real do Supabase, um link de redefinição será enviado para este e-mail.",
+        );
+        return;
+      }
+
+      const supabase = createClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        {
+          redirectTo: `${window.location.origin}/auth/callback?next=/redefinir-senha`,
+        },
+      );
+
+      if (error) {
+        setErrorMessage(translateSupabaseError(error.message));
+        return;
+      }
+
+      setInfoMessage(
+        "Enviamos um link de redefinição de senha para o seu e-mail. Verifique sua caixa de entrada e o spam.",
+      );
+    } catch {
+      setErrorMessage("Erro inesperado ao solicitar recuperação de senha.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleRedeemManualInvite(event: React.FormEvent<HTMLFormElement>) {
@@ -367,7 +415,64 @@ export function AuthForm({
       )}
 
       {/* Bloqueio de cadastro comum sem convite do síndico */}
-      {signupBlockedWithoutInvite ? (
+      {forgotMode ? (
+        <form onSubmit={handlePasswordReset} className="space-y-4" noValidate>
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-slate-900">
+              Recuperar senha
+            </h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Informe seu e-mail cadastrado e enviaremos um link seguro para
+              você definir uma nova senha.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="forgot-email"
+              className="block text-sm font-medium text-slate-700 mb-1.5"
+            >
+              E-mail cadastrado
+            </label>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                id="forgot-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nome@exemplo.com"
+                className="vizo-input pl-11"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <button
+            id="btn-send-password-reset"
+            type="submit"
+            disabled={loading}
+            className="vizo-btn-primary w-full"
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span>Enviar link de recuperação</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setForgotMode(false);
+              setErrorMessage(null);
+              setInfoMessage(null);
+            }}
+            className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+          >
+            Voltar para o login
+          </button>
+        </form>
+      ) : signupBlockedWithoutInvite ? (
         <div className="space-y-4">
           <div className="rounded-xl border border-amber-200/90 bg-amber-50/70 p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-bold text-amber-950">
@@ -480,12 +585,28 @@ export function AuthForm({
             </div>
 
             <div>
-              <label
-                htmlFor="auth-password"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
-              >
-                Senha
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="auth-password"
+                  className="block text-sm font-medium text-slate-700"
+                >
+                  Senha
+                </label>
+                {mode === "login" && (
+                  <button
+                    id="btn-forgot-password"
+                    type="button"
+                    onClick={() => {
+                      setForgotMode(true);
+                      setErrorMessage(null);
+                      setInfoMessage(null);
+                    }}
+                    className="text-xs font-semibold text-teal-800 hover:underline cursor-pointer"
+                  >
+                    Esqueci minha senha
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input

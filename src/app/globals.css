@@ -167,3 +167,18 @@
 .animate-vizo-fade {
   animation: vizoFadeUp 260ms ease-out both;
 }
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .vizo-card {
+    box-shadow: none !important;
+    border-color: #cbd5e1 !important;
+  }
+}

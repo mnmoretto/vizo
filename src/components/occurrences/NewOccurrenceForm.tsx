@@ -5,13 +5,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
+  Building2,
   CalendarClock,
   CheckCircle2,
   DoorClosed,
   FileText,
+  Home,
   Loader2,
   Send,
+  Tag,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -19,6 +23,7 @@ import {
   MAX_PHOTOS_PER_UPLOAD,
   MIN_DESCRIPTION_LENGTH,
   OCCURRENCES_BUCKET,
+  PRIORITY_META,
   buildPhotoStoragePath,
   compressImageIfNeeded,
 } from "@/lib/occurrences";
@@ -26,21 +31,46 @@ import {
   PhotoPicker,
   type PendingPhoto,
 } from "@/components/occurrences/PhotoPicker";
-import { ROOM_OPTIONS } from "@/types/database";
+import {
+  CATEGORY_OPTIONS,
+  COMMON_AREA_OPTIONS,
+  ROOM_OPTIONS,
+  type CondominiumWithStats,
+  type OccurrencePriority,
+  type OccurrenceScope,
+  type UserRole,
+} from "@/types/database";
 
 interface NewOccurrenceFormProps {
   userId: string;
+  userRole: UserRole;
   unitLabel: string;
+  condominiums?: CondominiumWithStats[];
+  defaultCondoId?: string | null;
 }
+
+const PRIORITIES: OccurrencePriority[] = ["normal", "alta", "emergencia"];
 
 export function NewOccurrenceForm({
   userId,
+  userRole,
   unitLabel,
+  condominiums = [],
+  defaultCondoId = null,
 }: NewOccurrenceFormProps) {
   const router = useRouter();
+  const isSindico = userRole === "sindico";
 
+  const [selectedCondoId, setSelectedCondoId] = useState<string>(
+    defaultCondoId || condominiums[0]?.id || "",
+  );
+  const [scope, setScope] = useState<OccurrenceScope>(
+    isSindico ? "area_comum" : "unidade",
+  );
   const [room, setRoom] = useState<string>("");
   const [otherRoomDetail, setOtherRoomDetail] = useState<string>("");
+  const [category, setCategory] = useState<string>("Hidráulica");
+  const [priority, setPriority] = useState<OccurrencePriority>("normal");
   const [description, setDescription] = useState<string>("");
   const [photos, setPhotos] = useState<PendingPhoto[]>([]);
 
@@ -66,6 +96,9 @@ export function NewOccurrenceForm({
     };
   }, []);
 
+  const locationOptions =
+    scope === "area_comum" ? COMMON_AREA_OPTIONS : ROOM_OPTIONS;
+
   const trimmedLength = description.trim().length;
   const remainingChars = Math.max(0, MIN_DESCRIPTION_LENGTH - trimmedLength);
   const isDescriptionValid = trimmedLength >= MIN_DESCRIPTION_LENGTH;
@@ -73,6 +106,13 @@ export function NewOccurrenceForm({
     100,
     Math.round((trimmedLength / MIN_DESCRIPTION_LENGTH) * 100),
   );
+
+  function handleScopeChange(nextScope: OccurrenceScope) {
+    setScope(nextScope);
+    setRoom("");
+    setOtherRoomDetail("");
+    setRoomError(null);
+  }
 
   function handleAddFiles(fileList: FileList | File[]) {
     setPhotosError(null);
@@ -125,7 +165,11 @@ export function NewOccurrenceForm({
     let hasError = false;
 
     if (!room) {
-      setRoomError("Selecione o cômodo do imóvel.");
+      setRoomError(
+        scope === "area_comum"
+          ? "Selecione o local da área comum."
+          : "Selecione o cômodo do imóvel.",
+      );
       hasError = true;
     }
 
@@ -151,7 +195,7 @@ export function NewOccurrenceForm({
     try {
       if (!isSupabaseConfigured()) {
         setSubmitError(
-          "Supabase não conectado: o arquivo .env.local não foi carregado. Crie/recrie o .env.local na raiz do projeto (em UTF-8 sem BOM) e reinicie o servidor.",
+          "Supabase não conectado: o arquivo .env.local não foi carregado. Verifique o arquivo na raiz do projeto e reinicie o servidor.",
         );
         return;
       }
@@ -163,16 +207,52 @@ export function NewOccurrenceForm({
           ? `Outro — ${otherRoomDetail.trim()}`
           : room;
 
-      const { data: created, error: createError } = await supabase
+      const basePayload: Record<string, unknown> = {
+        user_id: userId,
+        room: finalRoom,
+        description: description.trim(),
+        status: "aberto",
+        scope,
+        category,
+        priority,
+      };
+
+      if (isSindico && selectedCondoId) {
+        basePayload.condominium_id = selectedCondoId;
+      }
+
+      let created: { id: string; protocol: string; created_at: string } | null =
+        null;
+      let createError: { code?: string; message?: string } | null = null;
+
+      const primaryInsert = await supabase
         .from("occurrences")
-        .insert({
-          user_id: userId,
-          room: finalRoom,
-          description: description.trim(),
-          status: "aberto",
-        })
+        .insert(basePayload)
         .select("id, protocol, created_at")
         .single<{ id: string; protocol: string; created_at: string }>();
+
+      if (
+        primaryInsert.error &&
+        (primaryInsert.error.code === "42703" ||
+          primaryInsert.error.code === "PGRST204")
+      ) {
+        // Fallback automático caso o SQL da Etapa 5 ainda não tenha sido aplicado
+        const fallbackInsert = await supabase
+          .from("occurrences")
+          .insert({
+            user_id: userId,
+            room: finalRoom,
+            description: description.trim(),
+            status: "aberto",
+          })
+          .select("id, protocol, created_at")
+          .single<{ id: string; protocol: string; created_at: string }>();
+        created = fallbackInsert.data;
+        createError = fallbackInsert.error;
+      } else {
+        created = primaryInsert.data;
+        createError = primaryInsert.error;
+      }
 
       if (createError || !created) {
         if (
@@ -180,7 +260,7 @@ export function NewOccurrenceForm({
           createError?.code === "PGRST205"
         ) {
           setSubmitError(
-            "As tabelas da Etapa 2 ainda não foram criadas no Supabase. Execute o script supabase/stage2_occurrences.sql no SQL Editor.",
+            "As tabelas ainda não foram criadas no Supabase. Execute os scripts SQL no SQL Editor.",
           );
         } else {
           setSubmitError(
@@ -269,7 +349,7 @@ export function NewOccurrenceForm({
 
   return (
     <div className="space-y-5 animate-vizo-fade">
-      {/* Voltar + Título */}
+      {/* Voltar + Unidade */}
       <div className="flex items-center justify-between gap-4">
         <Link
           href="/"
@@ -279,7 +359,7 @@ export function NewOccurrenceForm({
           <span>Voltar</span>
         </Link>
 
-        {unitLabel && (
+        {unitLabel && !isSindico && (
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
             {unitLabel}
           </span>
@@ -288,7 +368,7 @@ export function NewOccurrenceForm({
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          Registrar Ocorrido
+          {isSindico ? "Registrar Vistoria / Ocorrência" : "Registrar Ocorrido"}
         </h1>
         <p className="mt-1 text-sm text-slate-500 leading-relaxed">
           Descreva o problema com detalhes e anexe fotos. A data, a hora e o
@@ -311,58 +391,191 @@ export function NewOccurrenceForm({
         className="vizo-card rounded-2xl p-5 sm:p-7 space-y-6"
         noValidate
       >
-        {/* 1. Cômodo do imóvel */}
-        <div className="space-y-2">
-          <label
-            htmlFor="occurrence-room"
-            className="flex items-center gap-2 text-sm font-semibold text-slate-800"
-          >
-            <DoorClosed className="h-4 w-4 text-teal-700" />
-            <span>
-              Cômodo do imóvel <span className="text-rose-600">*</span>
-            </span>
-          </label>
-
-          <select
-            id="occurrence-room"
-            name="room"
-            required
-            value={room}
-            onChange={(e) => {
-              setRoom(e.target.value);
-              setRoomError(null);
-            }}
-            disabled={submitting}
-            aria-invalid={Boolean(roomError)}
-            className={`vizo-input bg-white ${roomError ? "vizo-input-error" : ""}`}
-          >
-            <option value="">Selecione o cômodo...</option>
-            {ROOM_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-
-          {room === "Outro" && (
-            <input
-              id="occurrence-room-other"
-              type="text"
-              value={otherRoomDetail}
-              onChange={(e) => setOtherRoomDetail(e.target.value)}
-              placeholder="Especifique o local (opcional, ex.: Corredor, Hall)"
-              maxLength={60}
+        {/* Seletor de condomínio quando Síndico gerencia múltiplos condomínios */}
+        {isSindico && condominiums.length > 0 && (
+          <div className="space-y-2">
+            <label
+              htmlFor="occurrence-condo"
+              className="flex items-center gap-2 text-sm font-semibold text-slate-800"
+            >
+              <Building2 className="h-4 w-4 text-teal-700" />
+              <span>Condomínio</span>
+            </label>
+            <select
+              id="occurrence-condo"
+              value={selectedCondoId}
+              onChange={(e) => setSelectedCondoId(e.target.value)}
               disabled={submitting}
-              className="vizo-input mt-2"
-            />
-          )}
+              className="vizo-input bg-white"
+            >
+              {condominiums.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
-          {roomError && (
-            <p className="text-xs font-medium text-rose-700">{roomError}</p>
-          )}
+        {/* 1. Escopo: Minha Unidade vs Área Comum */}
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-slate-800">
+            Onde está o ocorrido? <span className="text-rose-600">*</span>
+          </p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => handleScopeChange("unidade")}
+              disabled={submitting}
+              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition-all cursor-pointer ${
+                scope === "unidade"
+                  ? "border-teal-600 bg-teal-50 text-teal-900 shadow-xs"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Home className="h-4 w-4 shrink-0" />
+              <span>Minha Unidade</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleScopeChange("area_comum")}
+              disabled={submitting}
+              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition-all cursor-pointer ${
+                scope === "area_comum"
+                  ? "border-teal-600 bg-teal-50 text-teal-900 shadow-xs"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Building2 className="h-4 w-4 shrink-0" />
+              <span>Área Comum</span>
+            </button>
+          </div>
         </div>
 
-        {/* 2. Descrição com contador em tempo real (mínimo 100 caracteres) */}
+        {/* 2. Cômodo / Local + Categoria */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label
+              htmlFor="occurrence-room"
+              className="flex items-center gap-2 text-sm font-semibold text-slate-800"
+            >
+              <DoorClosed className="h-4 w-4 text-teal-700" />
+              <span>
+                {scope === "area_comum"
+                  ? "Local da área comum"
+                  : "Cômodo do imóvel"}{" "}
+                <span className="text-rose-600">*</span>
+              </span>
+            </label>
+
+            <select
+              id="occurrence-room"
+              name="room"
+              required
+              value={room}
+              onChange={(e) => {
+                setRoom(e.target.value);
+                setRoomError(null);
+              }}
+              disabled={submitting}
+              aria-invalid={Boolean(roomError)}
+              className={`vizo-input bg-white ${roomError ? "vizo-input-error" : ""}`}
+            >
+              <option value="">
+                {scope === "area_comum"
+                  ? "Selecione o local..."
+                  : "Selecione o cômodo..."}
+              </option>
+              {locationOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+
+            {room === "Outro" && (
+              <input
+                id="occurrence-room-other"
+                type="text"
+                value={otherRoomDetail}
+                onChange={(e) => setOtherRoomDetail(e.target.value)}
+                placeholder="Especifique o local (opcional)"
+                maxLength={60}
+                disabled={submitting}
+                className="vizo-input mt-2"
+              />
+            )}
+
+            {roomError && (
+              <p className="text-xs font-medium text-rose-700">{roomError}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="occurrence-category"
+              className="flex items-center gap-2 text-sm font-semibold text-slate-800"
+            >
+              <Tag className="h-4 w-4 text-teal-700" />
+              <span>Categoria</span>
+            </label>
+
+            <select
+              id="occurrence-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={submitting}
+              className="vizo-input bg-white"
+            >
+              {CATEGORY_OPTIONS.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 3. Nível de Urgência */}
+        <div className="space-y-2">
+          <p className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <AlertTriangle className="h-4 w-4 text-teal-700" />
+            <span>Nível de urgência</span>
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {PRIORITIES.map((level) => {
+              const meta = PRIORITY_META[level];
+              const isSelected = priority === level;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setPriority(level)}
+                  disabled={submitting}
+                  className={`rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
+                    isSelected
+                      ? level === "emergencia"
+                        ? "border-rose-500 bg-rose-50 text-rose-950"
+                        : level === "alta"
+                          ? "border-amber-500 bg-amber-50 text-amber-950"
+                          : "border-teal-600 bg-teal-50 text-teal-950"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="block text-xs sm:text-sm font-bold">
+                    {meta.label}
+                  </span>
+                  <span className="hidden sm:block text-[11px] opacity-75 mt-0.5">
+                    {meta.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 4. Descrição com contador em tempo real (mínimo 100 caracteres) */}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label
@@ -402,7 +615,6 @@ export function NewOccurrenceForm({
             }`}
           />
 
-          {/* Barra de progresso do mínimo de 100 caracteres */}
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
             <div
               className={`h-full transition-all duration-200 rounded-full ${
@@ -436,7 +648,7 @@ export function NewOccurrenceForm({
           )}
         </div>
 
-        {/* 3. Upload / Captura de Fotos */}
+        {/* 5. Upload / Captura de Fotos */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <p className="text-sm font-semibold text-slate-800">
             Fotos do ocorrido <span className="text-rose-600">*</span>
@@ -455,7 +667,6 @@ export function NewOccurrenceForm({
           />
         </div>
 
-        {/* Aviso do carimbo automático de data/hora e protocolo */}
         <div className="flex items-start gap-2.5 rounded-xl bg-slate-50 border border-slate-200/70 px-3.5 py-3 text-xs text-slate-600">
           <CalendarClock className="h-4 w-4 shrink-0 text-teal-700 mt-0.5" />
           <p>
@@ -471,7 +682,6 @@ export function NewOccurrenceForm({
           </p>
         </div>
 
-        {/* Botão de envio — bloqueado se descrição < 100 caracteres */}
         <button
           id="btn-submit-occurrence"
           type="submit"

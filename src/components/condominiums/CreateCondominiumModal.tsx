@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   Building2,
+  Check,
   FileBadge2,
   Loader2,
   Mail,
@@ -16,6 +17,7 @@ import { createClient } from "@/lib/supabase/client";
 import { setActiveCondoCookieClient } from "@/lib/condo-cookies";
 import {
   formatCNPJ,
+  isValidCNPJ,
   onlyDigits,
   validateCondominiumFields,
   type CondominiumFieldErrors,
@@ -239,9 +241,15 @@ export function CreateCondominiumModal({
                   clearError("cnpj");
                 }}
                 placeholder="00.000.000/0001-00"
-                className={`vizo-input pl-11 font-mono text-[14px] ${fieldErrors.cnpj ? "vizo-input-error" : ""}`}
+                className={`vizo-input pl-11 pr-10 font-mono text-[14px] ${fieldErrors.cnpj ? "vizo-input-error" : ""}`}
                 disabled={saving}
               />
+              {isValidCNPJ(cnpj) && (
+                <Check
+                  aria-label="CNPJ válido"
+                  className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-600"
+                />
+              )}
             </div>
             {fieldErrors.cnpj && (
               <p className="mt-1 text-xs font-medium text-rose-700">

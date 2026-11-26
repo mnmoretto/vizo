@@ -103,7 +103,7 @@ export function AppShell({
       )}
 
       {/* Top Bar Responsiva */}
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md print:hidden">
         <div className="mx-auto flex h-16 max-w-4xl items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex items-center gap-5 min-w-0">
             <Link
@@ -188,14 +188,14 @@ export function AppShell({
       </header>
 
       {/* Conteúdo Principal */}
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:pb-12">
+      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:pb-12 print:p-0 print:max-w-none">
         {children}
       </main>
 
       {/* Bottom Navigation Mobile-First */}
       <nav
         aria-label="Navegação inferior"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/90 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/90 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden print:hidden"
       >
         <div
           className={`mx-auto grid max-w-md px-2 py-2 ${

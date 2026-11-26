@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,9 +10,12 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Copy,
   DoorClosed,
+  FileDown,
   History,
   Loader2,
   Lock,
@@ -21,6 +24,7 @@ import {
   Send,
   Shield,
   ShieldCheck,
+  Tag,
   User,
   X,
   XCircle,
@@ -30,13 +34,15 @@ import { createClient } from "@/lib/supabase/client";
 import {
   MAX_PHOTOS_PER_UPLOAD,
   OCCURRENCES_BUCKET,
+  PRIORITY_META,
+  SCOPE_LABELS,
   STATUS_META,
   buildPhotoStoragePath,
   compressImageIfNeeded,
   formatDateTimeBR,
   formatPhotoStampBR,
 } from "@/lib/occurrences";
-import { formatPhone, onlyDigits } from "@/lib/validators";
+import { formatCNPJ, formatPhone, onlyDigits } from "@/lib/validators";
 import {
   PhotoPicker,
   type PendingPhoto,
@@ -66,13 +72,27 @@ export function OccurrenceDetail({
 }: OccurrenceDetailProps) {
   const router = useRouter();
   const statusMeta = STATUS_META[occurrence.status];
+  const priority = occurrence.priority ?? "normal";
+  const priorityMeta = PRIORITY_META[priority];
   const isOpen = occurrence.status === "aberto";
   const isSindico = currentUserRole === "sindico";
 
   const [copiedProtocol, setCopiedProtocol] = useState(false);
-  const [lightboxPhoto, setLightboxPhoto] = useState<OccurrencePhoto | null>(
-    null,
-  );
+
+  // Lista plana de todas as fotos da ocorrência para navegação no Lightbox (< / >)
+  const allPhotos = useMemo<OccurrencePhoto[]>(() => {
+    const list: OccurrencePhoto[] = [...occurrence.initialPhotos];
+    for (const upd of occurrence.updates) {
+      for (const p of upd.photos) {
+        list.push(p);
+      }
+    }
+    return list;
+  }, [occurrence.initialPhotos, occurrence.updates]);
+
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const activeLightboxPhoto =
+    lightboxIndex !== null ? (allPhotos[lightboxIndex] ?? null) : null;
 
   // Estado do formulário de atualização intermediária
   const [comment, setComment] = useState("");
@@ -105,20 +125,43 @@ export function OccurrenceDetail({
     };
   }, []);
 
-  // Fecha lightbox ou modal de encerramento com a tecla Escape
+  // Atalhos de teclado para Lightbox (Escape, Seta Esquerda, Seta Direita) e Modal
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (lightboxPhoto) {
-        setLightboxPhoto(null);
-      } else if (closingTarget && !closingLoading) {
+      if (lightboxIndex !== null) {
+        if (event.key === "Escape") {
+          setLightboxIndex(null);
+        } else if (event.key === "ArrowLeft" && allPhotos.length > 1) {
+          setLightboxIndex((prev) =>
+            prev === null
+              ? null
+              : (prev - 1 + allPhotos.length) % allPhotos.length,
+          );
+        } else if (event.key === "ArrowRight" && allPhotos.length > 1) {
+          setLightboxIndex((prev) =>
+            prev === null ? null : (prev + 1) % allPhotos.length,
+          );
+        }
+        return;
+      }
+
+      if (event.key === "Escape" && closingTarget && !closingLoading) {
         setClosingTarget(null);
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [lightboxPhoto, closingTarget, closingLoading]);
+  }, [lightboxIndex, allPhotos.length, closingTarget, closingLoading]);
+
+  function openLightboxForPhoto(photoId: string) {
+    const idx = allPhotos.findIndex((p) => p.id === photoId);
+    if (idx !== -1) setLightboxIndex(idx);
+  }
+
+  function handleExportPDF() {
+    window.print();
+  }
 
   async function handleCopyProtocol() {
     try {
@@ -126,7 +169,7 @@ export function OccurrenceDetail({
       setCopiedProtocol(true);
       setTimeout(() => setCopiedProtocol(false), 2000);
     } catch {
-      // Clipboard indisponível em contextos sem permissão
+      // Clipboard indisponível
     }
   }
 
@@ -298,7 +341,6 @@ export function OccurrenceDetail({
     try {
       const supabase = createClient();
 
-      // Tenta primeiro a função atômica da Etapa 3 (close_occurrence)
       const { error: rpcError } = await supabase.rpc("close_occurrence", {
         p_occurrence_id: occurrence.id,
         p_new_status: closingTarget,
@@ -306,7 +348,6 @@ export function OccurrenceDetail({
       });
 
       if (rpcError) {
-        // Fallback gracioso caso o SQL da Etapa 3 ainda não tenha sido rodado
         const isMissingRpc =
           rpcError.code === "42883" ||
           rpcError.code === "PGRST202" ||
@@ -371,8 +412,34 @@ export function OccurrenceDetail({
 
   return (
     <div className="space-y-6 animate-vizo-fade">
-      {/* Barra superior de navegação */}
-      <div className="flex items-center justify-between gap-3">
+      {/* Cabeçalho formal exclusivo para impressão / PDF */}
+      <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-lg font-bold text-slate-900">
+              Vizo — Relatório de Ocorrência / Vistoria
+            </p>
+            {occurrence.condominium && (
+              <p className="text-sm font-semibold text-slate-700 mt-0.5">
+                {occurrence.condominium.name} · CNPJ{" "}
+                {formatCNPJ(occurrence.condominium.cnpj)}
+              </p>
+            )}
+            {occurrence.condominium?.address && (
+              <p className="text-xs text-slate-500">
+                {occurrence.condominium.address}
+              </p>
+            )}
+          </div>
+          <div className="text-right font-mono text-xs text-slate-700">
+            <p className="font-bold text-sm">{occurrence.protocol}</p>
+            <p>Status: {statusMeta.label}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Barra superior de navegação + Exportar PDF */}
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
@@ -383,19 +450,33 @@ export function OccurrenceDetail({
           </span>
         </Link>
 
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.badgeClass}`}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotClass}`} />
-          {statusMeta.label}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            id="btn-export-pdf"
+            type="button"
+            onClick={handleExportPDF}
+            className="vizo-btn-secondary py-1.5 px-3 text-xs"
+          >
+            <FileDown className="h-3.5 w-3.5 text-teal-700" />
+            <span>Exportar PDF</span>
+          </button>
+
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.badgeClass}`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotClass}`}
+            />
+            {statusMeta.label}
+          </span>
+        </div>
       </div>
 
       {/* Confirmação imediata após criação */}
       {justCreated && (
         <div
           role="status"
-          className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3.5 text-sm text-emerald-950"
+          className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3.5 text-sm text-emerald-950 print:hidden"
         >
           <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" />
           <div>
@@ -414,7 +495,7 @@ export function OccurrenceDetail({
       {isSindico && isOpen && (
         <section
           aria-label="Ações administrativas do síndico"
-          className="rounded-2xl border border-amber-200/90 bg-amber-50/60 p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          className="rounded-2xl border border-amber-200/90 bg-amber-50/60 p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden"
         >
           <div className="flex items-start gap-2.5">
             <Shield className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" />
@@ -461,11 +542,18 @@ export function OccurrenceDetail({
               <span className="font-mono text-sm font-bold tracking-tight text-teal-900 bg-teal-50 border border-teal-200/80 px-2.5 py-1 rounded-lg">
                 {occurrence.protocol}
               </span>
+
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${priorityMeta.badgeClass}`}
+              >
+                Urgência: {priorityMeta.label}
+              </span>
+
               <button
                 type="button"
                 onClick={handleCopyProtocol}
                 aria-label="Copiar protocolo"
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer print:hidden"
               >
                 {copiedProtocol ? (
                   <>
@@ -485,6 +573,20 @@ export function OccurrenceDetail({
               <DoorClosed className="h-5 w-5 text-teal-700 shrink-0" />
               <span className="break-words">{occurrence.room}</span>
             </h1>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              {occurrence.scope && (
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                  {SCOPE_LABELS[occurrence.scope]}
+                </span>
+              )}
+              {occurrence.category && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-teal-50/70 px-2 py-0.5 font-medium text-teal-900">
+                  <Tag className="h-3 w-3 text-teal-700" />
+                  {occurrence.category}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 rounded-xl bg-slate-50 border border-slate-200/70 px-3 py-2 text-xs text-slate-600">
@@ -500,9 +602,13 @@ export function OccurrenceDetail({
           </div>
         </div>
 
-        {/* Faixa de identificação do morador (visível para o síndico) */}
-        {isSindico && occurrence.resident && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-xs sm:text-sm">
+        {/* Faixa de identificação do morador (visível para o síndico e no PDF) */}
+        {occurrence.resident && (isSindico || true) && (
+          <div
+            className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-xs sm:text-sm ${
+              isSindico ? "" : "hidden print:flex"
+            }`}
+          >
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900">
                 <User className="h-4 w-4 text-slate-400 shrink-0" />
@@ -553,8 +659,8 @@ export function OccurrenceDetail({
                 <button
                   key={photo.id}
                   type="button"
-                  onClick={() => setLightboxPhoto(photo)}
-                  className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 cursor-pointer"
+                  onClick={() => openLightboxForPhoto(photo.id)}
+                  className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 cursor-pointer break-inside-avoid"
                 >
                   <div className="aspect-square w-full overflow-hidden">
                     {photo.signedUrl ? (
@@ -576,7 +682,7 @@ export function OccurrenceDetail({
                       <Clock className="h-3 w-3 shrink-0 text-teal-300" />
                       {formatPhotoStampBR(photo.captured_at)}
                     </span>
-                    <ZoomIn className="h-3 w-3 shrink-0 text-slate-300 group-hover:text-white" />
+                    <ZoomIn className="h-3 w-3 shrink-0 text-slate-300 group-hover:text-white print:hidden" />
                   </div>
                 </button>
               ))}
@@ -600,7 +706,7 @@ export function OccurrenceDetail({
 
         <ol className="relative space-y-4 pl-6 before:absolute before:left-[9px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
           {/* Marco 1: Abertura */}
-          <li className="relative">
+          <li className="relative break-inside-avoid">
             <span className="absolute -left-6 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-teal-600 ring-4 ring-background">
               <span className="h-1.5 w-1.5 rounded-full bg-white" />
             </span>
@@ -631,7 +737,7 @@ export function OccurrenceDetail({
               closingStatus === "resolvido" || closingStatus === "cancelado";
 
             return (
-              <li key={upd.id} className="relative">
+              <li key={upd.id} className="relative break-inside-avoid">
                 <span
                   className={`absolute -left-6 top-1.5 flex h-5 w-5 items-center justify-center rounded-full ring-4 ring-background ${
                     closingStatus === "resolvido"
@@ -711,7 +817,7 @@ export function OccurrenceDetail({
                         <button
                           key={photo.id}
                           type="button"
-                          onClick={() => setLightboxPhoto(photo)}
+                          onClick={() => openLightboxForPhoto(photo.id)}
                           className="group relative overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-left cursor-pointer"
                         >
                           <div className="aspect-square w-full overflow-hidden">
@@ -732,7 +838,7 @@ export function OccurrenceDetail({
                             <span className="truncate">
                               {formatPhotoStampBR(photo.captured_at)}
                             </span>
-                            <ZoomIn className="h-3 w-3 shrink-0" />
+                            <ZoomIn className="h-3 w-3 shrink-0 print:hidden" />
                           </div>
                         </button>
                       ))}
@@ -745,8 +851,8 @@ export function OccurrenceDetail({
         </ol>
       </section>
 
-      {/* Bloco de Atualização (liberado apenas se status === 'aberto') */}
-      <section aria-label="Adicionar atualização">
+      {/* Bloco de Atualização (oculto na impressão) */}
+      <section aria-label="Adicionar atualização" className="print:hidden">
         {isOpen ? (
           <form
             onSubmit={handleAddUpdate}
@@ -866,7 +972,7 @@ export function OccurrenceDetail({
           onClick={() => {
             if (!closingLoading) setClosingTarget(null);
           }}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 p-0 sm:p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 p-0 sm:p-4 backdrop-blur-xs print:hidden"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -1013,44 +1119,83 @@ export function OccurrenceDetail({
         </div>
       )}
 
-      {/* Modal Lightbox para ampliar fotos com carimbo de data/hora */}
-      {lightboxPhoto && lightboxPhoto.signedUrl && (
+      {/* Modal Lightbox com navegação Anterior / Próxima + contador */}
+      {activeLightboxPhoto && activeLightboxPhoto.signedUrl && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label="Visualização ampliada da foto"
-          onClick={() => setLightboxPhoto(null)}
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 p-4 backdrop-blur-xs"
+          onClick={() => setLightboxIndex(null)}
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/92 p-4 backdrop-blur-xs print:hidden"
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-3xl overflow-hidden rounded-2xl bg-slate-900 shadow-2xl"
           >
             <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-xs text-white">
-              <span className="inline-flex items-center gap-1.5 font-mono">
-                <Clock className="h-3.5 w-3.5 text-teal-300" />
-                Registrada em{" "}
-                {formatDateTimeBR(lightboxPhoto.captured_at, {
-                  withSeconds: true,
-                })}
-              </span>
+              <div className="flex items-center gap-3 min-w-0">
+                {allPhotos.length > 1 && lightboxIndex !== null && (
+                  <span className="rounded-md bg-white/15 px-2 py-0.5 font-mono font-semibold">
+                    {lightboxIndex + 1} / {allPhotos.length}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1.5 font-mono truncate">
+                  <Clock className="h-3.5 w-3.5 text-teal-300 shrink-0" />
+                  {formatDateTimeBR(activeLightboxPhoto.captured_at, {
+                    withSeconds: true,
+                  })}
+                </span>
+              </div>
+
               <button
                 type="button"
-                onClick={() => setLightboxPhoto(null)}
+                onClick={() => setLightboxIndex(null)}
                 aria-label="Fechar visualização"
-                className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 hover:text-white transition-colors cursor-pointer shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="flex max-h-[80vh] items-center justify-center bg-black p-2">
+            <div className="relative flex max-h-[80vh] items-center justify-center bg-black p-2">
+              {allPhotos.length > 1 && (
+                <button
+                  type="button"
+                  aria-label="Foto anterior"
+                  onClick={() =>
+                    setLightboxIndex((prev) =>
+                      prev === null
+                        ? null
+                        : (prev - 1 + allPhotos.length) % allPhotos.length,
+                    )
+                  }
+                  className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-white border border-white/15 hover:bg-teal-700 transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              )}
+
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={lightboxPhoto.signedUrl}
+                src={activeLightboxPhoto.signedUrl}
                 alt="Foto ampliada da ocorrência"
                 className="max-h-[76vh] w-auto max-w-full rounded-lg object-contain"
               />
+
+              {allPhotos.length > 1 && (
+                <button
+                  type="button"
+                  aria-label="Próxima foto"
+                  onClick={() =>
+                    setLightboxIndex((prev) =>
+                      prev === null ? null : (prev + 1) % allPhotos.length,
+                    )
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-white border border-white/15 hover:bg-teal-700 transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>

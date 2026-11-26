@@ -1,4 +1,8 @@
-import type { OccurrenceStatus } from "@/types/database";
+import type {
+  OccurrencePriority,
+  OccurrenceScope,
+  OccurrenceStatus,
+} from "@/types/database";
 
 export const MIN_DESCRIPTION_LENGTH = 100;
 export const MAX_PHOTOS_PER_UPLOAD = 8;
@@ -27,6 +31,36 @@ export const STATUS_META: Record<
     badgeClass: "bg-slate-100 text-slate-600 border border-slate-200",
     dotClass: "bg-slate-400",
   },
+};
+
+export const PRIORITY_META: Record<
+  OccurrencePriority,
+  {
+    label: string;
+    badgeClass: string;
+    description: string;
+  }
+> = {
+  normal: {
+    label: "Normal",
+    badgeClass: "bg-slate-100 text-slate-700 border border-slate-200",
+    description: "Atendimento de rotina",
+  },
+  alta: {
+    label: "Alta",
+    badgeClass: "bg-amber-50 text-amber-800 border border-amber-200",
+    description: "Requer atenção breve",
+  },
+  emergencia: {
+    label: "Emergência",
+    badgeClass: "bg-rose-50 text-rose-800 border border-rose-200",
+    description: "Risco ou vazamento ativo",
+  },
+};
+
+export const SCOPE_LABELS: Record<OccurrenceScope, string> = {
+  unidade: "Unidade",
+  area_comum: "Área Comum",
 };
 
 /**
@@ -74,6 +108,31 @@ export function formatPhotoStampBR(isoDate: string): string {
 }
 
 /**
+ * Calcula tempo decorrido desde a abertura (ex: "Hoje", "há 1 dia", "há 5 dias")
+ */
+export function formatOpenAgeBR(isoDate: string): {
+  label: string;
+  days: number;
+} {
+  const created = new Date(isoDate).getTime();
+  if (Number.isNaN(created)) return { label: "", days: 0 };
+
+  const diffMs = Math.max(0, Date.now() - created);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(diffHours / 24);
+
+  if (diffHours < 1) return { label: "agora mesmo", days: 0 };
+  if (diffHours < 24) {
+    return {
+      label: `há ${diffHours}h`,
+      days: 0,
+    };
+  }
+  if (days === 1) return { label: "há 1 dia", days: 1 };
+  return { label: `há ${days} dias`, days };
+}
+
+/**
  * Gera nome seguro para arquivo no Supabase Storage dentro da pasta do usuário
  */
 export function buildPhotoStoragePath(
@@ -84,7 +143,8 @@ export function buildPhotoStoragePath(
 ): string {
   const extMatch = fileName.toLowerCase().match(/\.([a-z0-9]+)$/);
   const safeExt =
-    extMatch && ["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(extMatch[1])
+    extMatch &&
+    ["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(extMatch[1])
       ? extMatch[1]
       : "jpg";
   const randomSuffix = Math.random().toString(36).slice(2, 8);
@@ -98,7 +158,6 @@ export function buildPhotoStoragePath(
 export async function compressImageIfNeeded(file: File): Promise<File> {
   if (typeof window === "undefined") return file;
   if (!file.type.startsWith("image/")) return file;
-  // Mantém arquivos já leves (< 1.2 MB) intactos
   if (file.size <= 1.2 * 1024 * 1024) return file;
 
   return new Promise((resolve) => {

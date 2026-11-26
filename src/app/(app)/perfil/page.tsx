@@ -3,10 +3,11 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { getCurrentSessionProfile } from "@/lib/auth";
+import { getCondominiumById } from "@/lib/condominiums-server";
 
 export const metadata: Metadata = {
   title: "Meu Perfil",
-  description: "Visualize seus dados de morador e unidade no Vizo.",
+  description: "Visualize e atualize seus dados de cadastro no Vizo.",
 };
 
 async function ProfileContent() {
@@ -16,7 +17,17 @@ async function ProfileContent() {
     redirect("/login");
   }
 
-  return <ProfileCard profile={session.profile} isDemo={session.isDemo} />;
+  const condo = session.profile.condominium_id
+    ? await getCondominiumById(session.profile.condominium_id)
+    : null;
+
+  return (
+    <ProfileCard
+      profile={session.profile}
+      condominiumName={condo?.name ?? null}
+      isDemo={session.isDemo}
+    />
+  );
 }
 
 export default function ProfilePage() {

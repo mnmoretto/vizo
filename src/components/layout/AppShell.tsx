@@ -90,7 +90,10 @@ export function AppShell({ profile, isDemo, children }: AppShellProps) {
             >
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href;
+                const isActive =
+                  item.href === "/"
+                    ? pathname === "/" || pathname.startsWith("/ocorrencias")
+                    : pathname === item.href;
                 return (
                   <Link
                     key={item.href}
@@ -162,7 +165,10 @@ export function AppShell({ profile, isDemo, children }: AppShellProps) {
         <div className="mx-auto grid max-w-md grid-cols-2 px-4 py-2">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const isActive =
+              item.href === "/"
+                ? pathname === "/" || pathname.startsWith("/ocorrencias")
+                : pathname === item.href;
             return (
               <Link
                 key={item.href}
